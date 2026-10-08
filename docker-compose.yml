@@ -1,0 +1,29 @@
+# abckasefi-catalog/docker-compose.yml
+# ABCKASEFI (ABeCedni KAtalog SErialu a FIlmu)
+# Start (once; or set DATA_PATH in .env):
+#   sudo install -d -o 10001 -g 10001 /opt/abckasefi-catalog/data
+# Then:
+#   cp .env.example .env  (fill in TMDB_API_KEY and API_TOKEN)
+#   docker compose up -d --build
+# UI:     http://<host>:8090/?token=<API_TOKEN>
+name: abckasefi-catalog
+services:
+  catalog:
+    build: .
+    # The published multi-arch image
+    # ghcr.io/mirecekd/abckasefi-catalog:latest can be used instead of
+    # building: replace `build: .` with that image reference.
+    image: abckasefi-catalog:latest
+    container_name: abckasefi-catalog
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    env_file: .env
+    # same uid as in the Dockerfile; the data dir must be writable by it
+    user: "10001:10001"
+    volumes:
+      # catalog.db, TMDB cache and the downloaded IMDb datasets live on the
+      # host, easy to back up or delete
+      - ${DATA_PATH:-/opt/abckasefi-catalog/data}:/data
+    # The first import peaks at about 540 MiB, so keep the limit above that
+    mem_limit: 900m

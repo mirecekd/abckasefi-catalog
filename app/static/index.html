@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<!-- abckasefi-catalog/app/static/index.html -->
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ABCKASEFI - ABeCední KAtalog SEriálů a FIlmů</title>
+<style>
+  :root { --paper:#202323; --ink:#eee9e1; --muted:#bdbcb5; --line:#545854; --accent:#e7ac80; --surface:#303635; color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.5 Arial, Helvetica, sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--paper); border-bottom:1px solid var(--line); padding:12px 20px; }
+  .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  h1 { font-size:18px; font-weight:500; margin:0 16px 0 0; color:var(--accent); }
+  button, select, input { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:6px 10px; font:inherit; }
+  button { cursor:pointer; } button.on { background:var(--accent); color:#202323; border-color:var(--accent); }
+  input[type=search] { min-width:220px; }
+  #letters button { min-width:34px; padding:4px 6px; }
+  #letters small { color:var(--muted); display:block; font-size:10px; line-height:1; }
+  main { padding:16px 20px 60px; }
+  #status { color:var(--muted); margin:4px 0 12px; }
+  #grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:14px; }
+  .card { background:var(--surface); border:1px solid var(--line); border-radius:8px; overflow:hidden; cursor:pointer; display:flex; flex-direction:column; }
+  .card:hover { border-color:var(--accent); }
+  .poster { aspect-ratio:2/3; background:#262a2a center/cover no-repeat; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px; padding:8px; text-align:center; }
+  .meta { padding:8px 10px 10px; }
+  .t { font-weight:600; font-size:14px; line-height:1.25; }
+  .s { color:var(--muted); font-size:12px; margin-top:2px; }
+  .cz { color:var(--accent); font-size:11px; }
+  #more { margin:20px auto; display:block; }
+  dialog { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:10px; max-width:760px; width:92vw; padding:0; }
+  dialog::backdrop { background:rgba(0,0,0,.65); }
+  .d { display:flex; gap:18px; padding:18px; flex-wrap:wrap; }
+  .d img { width:200px; border-radius:6px; background:#262a2a; align-self:flex-start; }
+  .d .body { flex:1; min-width:240px; }
+  .d h2 { margin:0 0 4px; color:var(--accent); font-weight:500; }
+  code { background:#262a2a; border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size:12px; word-break:break-all; }
+  .close { float:right; }
+  .err { color:#e08a7a; }
+  .seasons { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+  .seasons button.on { background:var(--accent); color:#202323; border-color:var(--accent); }
+  .eps { width:100%; max-height:46vh; overflow:auto; border-top:1px solid var(--line); margin-top:6px; }
+  .ep { display:flex; gap:10px; padding:8px 2px; border-bottom:1px solid var(--line); }
+  .ep img, .ep .still { width:120px; min-width:120px; height:68px; object-fit:cover; border-radius:4px; background:#262a2a; }
+  .ep .n { color:var(--accent); font-weight:600; }
+  .ep p { margin:2px 0 0; color:var(--muted); font-size:13px; }
+  .ep code { cursor:pointer; }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1 title="ABeCední KAtalog SEriálů a FIlmů">ABCKASEFI</h1>
+    <span id="kinds">
+      <button data-k="movie" class="on">Filmy</button>
+      <button data-k="series">Seriály</button>
+    </span>
+    <input id="q" type="search" placeholder="Hledat (bez diakritiky)" autocomplete="off">
+    <select id="list"><option value="">Seznamy TMDB...</option></select>
+    <select id="sort">
+      <option value="name">Podle abecedy</option>
+      <option value="popular">Nejvíc hlasů</option>
+      <option value="rating">Podle hodnocení</option>
+      <option value="year">Podle roku</option>
+    </select>
+    <select id="lang" title="Jazyk názvů a popisků">
+      <option value="cs">Názvy: CZ</option>
+      <option value="sk">Názvy: SK</option>
+      <option value="en">Názvy: EN</option>
+    </select>
+    <span id="stats" class="s"></span>
+  </div>
+  <div id="letters" class="row" style="margin-top:8px"></div>
+</header>
+<main>
+  <div id="status"></div>
+  <div id="grid"></div>
+  <button id="more" hidden>Další</button>
+</main>
+<dialog id="dlg"></dialog>
+<script>
+const $ = s => document.querySelector(s);
+const LANGS = ["cs", "sk", "en"];
+const savedLang = (() => { try { return localStorage.getItem("abckasefi.lang"); } catch (e) { return null; } })();
+const st = { kind: "movie", letter: null, sort: "name", sortTouched: false, page: 1, mode: "letter", list: "", q: "",
+  lang: LANGS.includes(savedLang) ? savedLang : "cs" };
+const LANG_URLS = ["/v1/titles", "/v1/search", "/v1/list/", "/v1/title/"];  // endpointy, ktere ?lang= znaji
+const token = new URLSearchParams(location.search).get("token") || "";
+const api = (p) => {
+  const extra = [];
+  if (LANG_URLS.some(u => p.startsWith(u))) extra.push("lang=" + st.lang);
+  if (token) extra.push("token=" + encodeURIComponent(token));
+  return fetch(p + (extra.length ? (p.includes("?") ? "&" : "?") + extra.join("&") : ""))
+  .then(r => { if (!r.ok) { const e = new Error(r.status === 503 ? "Katalog se ještě staví, zkus to za pár minut." : "Chyba " + r.status); e.status = r.status; throw e; } return r.json(); });
+};
+
+// h(tag, {attrs}, ...children): DOM bez innerHTML, texty jdou vždy přes textContent
+function h(tag, attrs, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (k === "class") el.className = v; else if (k.startsWith("on")) el[k] = v; else el.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) if (k !== null && k !== undefined && k !== "") el.append(k.nodeType ? k : document.createTextNode(String(k)));
+  return el;
+}
+const clear = el => el.replaceChildren();
+const say = (msg, isErr) => { const s = $("#status"); s.className = isErr ? "err" : ""; s.textContent = msg; };
+
+async function loadLetters() {
+  clear($("#letters"));
+  try {
+    const ls = await api("/v1/letters?type=" + st.kind);
+    for (const l of ls) {
+      const b = h("button", { "data-l": l.letter }, l.letter, h("small", {}, l.n));
+      b.onclick = () => { st.mode = "letter"; st.letter = l.letter; st.page = 1; $("#q").value = ""; $("#list").value = ""; show(true); };
+      $("#letters").append(b);
+    }
+    if (!st.letter || !ls.find(x => x.letter === st.letter)) st.letter = ls.length ? ls[0].letter : null;
+  } catch (e) { say(e.message, true); }
+}
+
+async function lists() {
+  const all = await api("/v1/lists"), sel = $("#list");
+  clear(sel); sel.append(h("option", { value: "" }, "Seznamy TMDB..."));
+  for (const [k, v] of Object.entries(all[st.kind] || {})) sel.append(h("option", { value: k }, v));
+}
+
+function card(it) {
+  const poster = h("div", { class: "poster", "data-id": it.id }, it.title);
+  const stars = it.rating ? " * " + Number(it.rating).toFixed(1) + (it.rating_reliable === false ? "?" : "") + " " : " ";
+  const sub = h("div", { class: "s", title: it.rating_reliable === false ? "Hodnocení vychází z mála hlasů (" + (it.votes ?? 0) + ")" : "" },
+    [it.year || "", stars, it.czsk ? h("span", { class: "cz" }, "CZ/SK") : ""]);
+  const alt = Object.entries(it.titles || {}).filter(([c, n]) => n !== it.title).map(([c, n]) => c.toUpperCase() + ": " + n).join("\n");
+  const fallback = it.title_lang && it.title_lang !== st.lang ? h("span", { class: "cz" }, " [" + it.title_lang.toUpperCase() + "]") : "";
+  const d = h("div", { class: "card", title: alt }, poster, h("div", { class: "meta" }, h("div", { class: "t" }, it.title, fallback), sub));
+  d.onclick = () => detail(it.id);
+  lazyPoster.observe(poster);
+  return d;
+}
+
+// obrázky se tahají až když karta vjede do okna
+const lazyPoster = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  lazyPoster.unobserve(e.target);
+  const el = e.target, img = new Image();
+  img.onload = () => { el.style.backgroundImage = `url(${img.src})`; el.textContent = ""; };
+  img.src = "/v1/poster/" + encodeURIComponent(el.dataset.id) + "?size=w185" + (token ? "&token=" + encodeURIComponent(token) : "");
+}), { rootMargin: "300px" });
+
+async function show(reset) {
+  if (reset) clear($("#grid"));
+  document.querySelectorAll("#letters button").forEach(b => b.classList.toggle("on", st.mode === "letter" && b.dataset.l === st.letter));
+  let url;
+  if (st.mode === "search") url = "/v1/search?q=" + encodeURIComponent(st.q) + "&type=" + st.kind + "&sort=" + (st.sortTouched ? st.sort : "popular");
+  else if (st.mode === "list") url = `/v1/list/${st.kind}/${st.list}?page=${st.page}&sort=${st.sortTouched ? (st.sort === "popular" ? "votes" : st.sort) : "tmdb"}`;
+  else if (st.letter) url = `/v1/titles?type=${st.kind}&letter=${encodeURIComponent(st.letter)}&sort=${st.sort === "popular" ? "rating" : st.sort}&page=${st.page}`;
+  else return;
+  say("Načítám...");
+  try {
+    const r = await api(url);
+    r.items.forEach(it => $("#grid").append(card(it)));
+    say(st.mode === "search" ? `Nalezeno ${r.items.length}` : `Strana ${st.page}, ${$("#grid").children.length} položek`);
+    $("#more").hidden = st.mode === "search" || (st.mode === "letter" && r.items.length < r.per_page) || r.items.length === 0;
+  } catch (e) { say(e.message, true); $("#more").hidden = true; }
+}
+
+const fmtDate = d => (d ? d.split("-").reverse().map(x => String(Number(x))).join(". ") : "");
+
+async function loadSeasons(id, body, eps) {
+  const bar = h("div", { class: "seasons" });
+  body.append(h("div", { class: "s" }, "Série a epizody:"), bar);
+  try {
+    const r = await api("/v1/title/" + encodeURIComponent(id) + "/seasons");
+    if (!r.seasons.length) { bar.textContent = r.note || "U tohoto seriálu nejsou žádné série."; return; }
+    for (const se of r.seasons) {
+      const b = h("button", {}, (se.season === 0 ? "Speciály" : "Série " + se.season) + " (" + se.episodes + ")");
+      b.onclick = () => { bar.querySelectorAll("button").forEach(x => x.classList.toggle("on", x === b)); loadEpisodes(id, se.season, eps); };
+      bar.append(b);
+    }
+  } catch (e) {
+    bar.textContent = e.status === 400 ? "Série a epizody potřebují TMDB_API_KEY."
+      : e.status === 404 ? "Pro tento titul nemáme data o sériích."
+      : "Série se nepodařilo načíst (" + e.message + ").";
+  }
+}
+
+async function loadEpisodes(id, season, eps) {
+  eps.hidden = false; clear(eps); eps.append(h("div", { class: "s" }, "Načítám epizody..."));
+  try {
+    const r = await api("/v1/title/" + encodeURIComponent(id) + "/season/" + season);
+    clear(eps);
+    if (!r.episodes.length) eps.append(h("div", { class: "s" }, "Žádné epizody."));
+    for (const e of r.episodes) {
+      const thumb = e.still_url && e.still_url.startsWith("https://image.tmdb.org/") ? h("img", { src: e.still_url, alt: "", loading: "lazy" }) : h("div", { class: "still" });
+      const meta = [fmtDate(e.air_date), e.runtime ? e.runtime + " min" : "", e.rating ? "TMDB " + Number(e.rating).toFixed(1) : ""].filter(Boolean).join(" | ");
+      const code = h("code", { title: "Kliknutím zkopíruješ odkaz pro Nokturno" }, e.play);
+      code.onclick = () => navigator.clipboard && navigator.clipboard.writeText(e.play);
+      eps.append(h("div", { class: "ep" }, thumb, h("div", {},
+        h("div", {}, h("span", { class: "n" }, "S" + String(season).padStart(2, "0") + "E" + String(e.episode).padStart(2, "0")), " " + (e.name || "")),
+        h("div", { class: "s" }, meta), e.overview ? h("p", {}, (e.overview_lang && e.overview_lang !== "cs" ? "[EN] " : "") + e.overview) : "", code)));
+    }
+  } catch (e) { clear(eps); eps.append(h("div", { class: "err" }, "Epizody se nepodařilo načíst (" + e.message + ").")); }
+}
+
+async function detail(id) {
+  const dlg = $("#dlg"); clear(dlg); dlg.append(h("div", { class: "d" }, "Načítám...")); dlg.showModal();
+  const close = h("button", { class: "close", onclick: () => dlg.close() }, "Zavřít");
+  try {
+    const t = await api("/v1/title/" + encodeURIComponent(id));
+    const safeImg = t.poster_url && t.poster_url.startsWith("https://image.tmdb.org/") ? h("img", { src: t.poster_url, alt: "" }) : "";
+    const body = h("div", { class: "body" }, close,
+      h("h2", {}, t.title + (t.year ? " (" + t.year + ")" : "")),
+      h("div", { class: "s" }, [t.original || "", t.genres.length ? " | " + t.genres.join(", ") : ""]),
+      h("p", {}, t.overview || "Popis zatím není (chybí TMDB_API_KEY, nebo titul v TMDB nemá žádný popis)."),
+      t.overview && t.overview_lang && t.overview_lang !== "cs" ? h("div", { class: "s" }, "Popis je anglicky - český TMDB nemá.") : "",
+      h("div", { class: "s" }, `IMDb ${t.rating ?? "-"} (${t.votes ?? 0} hlasů) | TMDB ${t.tmdb_rating ? Number(t.tmdb_rating).toFixed(1) : "-"}` + (t.runtime ? ` | ${t.runtime} min` : "")),
+      h("p", {}, h("a", { style: "color:var(--accent)", href: "https://www.imdb.com/title/" + encodeURIComponent(t.id) + "/", target: "_blank", rel: "noopener" }, "IMDb")),
+      h("p", { class: "s" }, "Přehrání v Kodi (Nokturno):", h("br"), h("code", {}, t.play)));
+    const eps = h("div", { class: "eps", hidden: "" });
+    clear(dlg); dlg.append(h("div", { class: "d" }, safeImg, body, eps));
+    if (t.type === "series") loadSeasons(t.id, body, eps);
+  } catch (e) {
+    clear(dlg);
+    const gone = e.status === 404;
+    dlg.append(h("div", { class: "d err" }, gone ? "Titul už v katalogu není (katalog se mezitím přestavěl). Seznam se obnoví." : e.message, close));
+    if (gone) { st.page = 1; loadLetters().then(() => show(true)); }
+  }
+}
+
+$("#kinds").onclick = async e => {
+  const k = e.target.dataset.k; if (!k) return;
+  st.kind = k; st.mode = "letter"; st.page = 1; st.letter = null; $("#q").value = ""; $("#list").value = "";
+  document.querySelectorAll("#kinds button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
+  await loadLetters(); await lists(); show(true);
+};
+$("#lang").value = st.lang;
+$("#lang").onchange = e => {
+  st.lang = e.target.value; st.page = 1;
+  try { localStorage.setItem("abckasefi.lang", st.lang); } catch (err) { /* private mode */ }
+  show(true);  // prekresli aktualni pohled (pismeno / hledani / seznam) v novem jazyce
+};
+$("#sort").onchange = e => {
+  st.sort = e.target.value; st.sortTouched = true; st.page = 1;
+  show(true);  // plati pro pismena, hledani i seznamy TMDB (poradi se aplikuje na zobrazenou stranu seznamu)
+};
+$("#list").onchange = e => { st.list = e.target.value; st.mode = st.list ? "list" : "letter"; st.page = 1; show(true); };
+$("#more").onclick = () => { st.page++; show(false); };
+let timer; $("#q").oninput = e => {
+  clearTimeout(timer); const v = e.target.value.trim();
+  timer = setTimeout(() => { if (v.length >= 2) { st.mode = "search"; st.q = v; show(true); } else if (!v) { st.mode = "letter"; st.page = 1; show(true); } }, 300);
+};
+(async () => {
+  try {
+    const hh = await fetch("/health").then(r => r.json());
+    $("#stats").textContent = `${hh.counts.movie || 0} filmů, ${hh.counts.series || 0} seriálů` + (hh.tmdb ? "" : " | TMDB klíč chybí (bez obrázků)");
+  } catch (e) { $("#stats").textContent = ""; }
+  await loadLetters(); await lists(); show(true);
+})();
+</script>
+</body>
+</html>

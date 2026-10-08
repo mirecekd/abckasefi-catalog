@@ -1,0 +1,7 @@
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+include = ["app", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
