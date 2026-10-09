@@ -2,6 +2,7 @@
 """HTTP API + web UI. Run: uvicorn app.main:app --host 0.0.0.0 --port 8090"""
 import logging
 import os
+import sqlite3
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, db, importer, routes_catalog, routes_lists, routes_titles
+from . import config, db, importer, migrate, routes_catalog, routes_lists, routes_titles
 from . import tmdb_client as client
 from .common import VERSION, auth
 
@@ -43,6 +44,10 @@ async def lifespan(_app):
     # httpx logs full URLs at INFO, and the TMDB v3 key travels in the query string -> never log it
     logging.getLogger("httpx").setLevel(logging.WARNING)
     db.init()
+    try:
+        migrate.add_skey()  # an older catalog.db is upgraded in place; a missing one is built by the importer thread
+    except sqlite3.Error:
+        log.exception("catalog migration failed, prefix browsing is unavailable until the next import")
     threading.Thread(target=_importer_loop, daemon=True, name="importer").start()
     yield
 

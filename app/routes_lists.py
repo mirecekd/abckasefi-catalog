@@ -3,9 +3,9 @@
 import math
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
-from . import config, db, importer
+from . import config, db, importer, overviews
 from . import tmdb_client as client
 from .common import MIN_RATED, auth, check_kind, check_lang, item_of
 
@@ -38,7 +38,7 @@ def _tmdb_item(result, imdb, kind):
         "titles": {}, "original": None,
         "year": int((result.get("release_date") or result.get("first_air_date") or "0")[:4] or 0) or None,
         "rating": result.get("vote_average"), "votes": result.get("vote_count"), "genres": [], "czsk": False,
-        "poster": f"/v1/poster/{imdb}"}
+        "poster": f"/v1/poster/{imdb}", "overview": "", "overview_lang": ""}
 
 
 def _window(kind, name, page, per_page):
@@ -70,8 +70,8 @@ def _window(kind, name, page, per_page):
 
 
 @router.get("/v1/list/{kind}/{name}")
-def tmdb_list(kind: str, name: str, page: int = Query(1, ge=1, le=500), sort: str = "tmdb", lang: str = "",
-              per_page: int = Query(20, ge=1, le=100)):
+def tmdb_list(background: BackgroundTasks, kind: str, name: str, page: int = Query(1, ge=1, le=500), sort: str = "tmdb",
+              lang: str = "", per_page: int = Query(20, ge=1, le=100)):
     """A TMDB list mapped to IMDb ids; titles are returned even if the catalog does not hold them.
 
     sort = tmdb (TMDB's own order: trend, popularity...) | rating | votes | year | name. The order applies within
@@ -89,11 +89,14 @@ def tmdb_list(kind: str, name: str, page: int = Query(1, ge=1, le=500), sort: st
     with ThreadPoolExecutor(max_workers=IMDB_WORKERS) as pool:
         imdb_ids = list(pool.map(lambda r: client.imdb_of(media, r["id"]), results))
     out = []
+    from_tmdb = {}  # imdb id -> overview text that came with the list result itself
     for r, imdb in zip(results, imdb_ids, strict=True):
         if not imdb:
             continue
+        from_tmdb[imdb] = r.get("overview") or ""
         row = db.get(imdb)
         out.append(item_of(row, lang) if row else _tmdb_item(r, imdb, kind))
+    overviews.attach(out, background, lang, from_tmdb)
     if sort != "tmdb":
         out.sort(key=_list_key(sort))
     for i in out:  # a few votes say nothing about quality: flag it so UIs do not present 9.0/1 vote as a hit

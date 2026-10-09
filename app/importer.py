@@ -10,23 +10,17 @@ import os
 import pathlib
 import sqlite3
 import time
-import unicodedata
 
 import httpx
 
 from . import config, db
+from .keys import skey, sortkey
 
 log = logging.getLogger("catalog.import")
 BASE = "https://datasets.imdbws.com/"
 FILES = ("title.basics", "title.ratings", "title.akas")
 KINDS = {"movie": "movie", "tvSeries": "series", "tvMiniSeries": "series"}
 FRESH_S = 20 * 3600  # a downloaded dataset younger than this is reused
-
-
-def sortkey(name):
-    """Lower-case text without diacritics, used for ordering and for the A-Z letter."""
-    plain = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c))
-    return plain.casefold().strip()
 
 
 def letter_of(key):
@@ -164,10 +158,10 @@ def build(workdir=None):
             if nvotes < config.MIN_VOTES and not (czsk and nvotes >= config.LOCAL_MIN_VOTES):
                 continue
             key = sortkey(name)
-            conn.execute("INSERT INTO titles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("INSERT INTO titles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (tid, kind, name, orig if czsk and orig != name else None, year, rating, nvotes,
                           genres, letter_of(key), key, 1 if czsk else 0,
-                          tn.get("cs"), tn.get("sk"), tn.get("en") or orig))
+                          tn.get("cs"), tn.get("sk"), tn.get("en") or orig, skey(name)))
             kept += 1
         conn.executescript(db.CATALOG_INDEXES)
         conn.execute("INSERT INTO fts(rowid, name, orig) SELECT rowid, sortkey, "

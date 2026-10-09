@@ -3,6 +3,7 @@
 import gzip
 import os
 import tempfile
+import time
 
 import pytest
 from fastapi.testclient import TestClient
@@ -73,7 +74,10 @@ GODFATHER_AKAS = [  # (id, region, language, title)
 @pytest.fixture()
 def client(monkeypatch):
     """TestClient with TMDB replaced by canned answers (no network)."""
-    from app import main, tmdb_client
+    from app import main, overviews, tmdb_client
     monkeypatch.setattr(tmdb_client, "request", fake_request)
     with TestClient(main.app) as c:
         yield c
+    deadline = time.time() + 10  # background overview fetches must finish while the fake TMDB is still patched in
+    while overviews.PENDING and time.time() < deadline:
+        time.sleep(0.01)

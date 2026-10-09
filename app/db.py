@@ -21,11 +21,12 @@ CATALOG_SCHEMA = """
 CREATE TABLE titles(
   id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, orig TEXT, year INT,
   rating REAL, votes INT, genres TEXT, letter TEXT NOT NULL, sortkey TEXT NOT NULL, local INT,
-  name_cs TEXT, name_sk TEXT, name_en TEXT);
+  name_cs TEXT, name_sk TEXT, name_en TEXT, skey TEXT NOT NULL DEFAULT '');
 CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);
 """
 CATALOG_INDEXES = """
 CREATE INDEX ix_browse ON titles(type, letter, sortkey);
+CREATE INDEX ix_skey ON titles(type, skey);
 CREATE VIRTUAL TABLE fts USING fts5(name, orig, content='', tokenize='unicode61 remove_diacritics 2');
 """
 
@@ -58,7 +59,7 @@ def ready():
 
 
 @contextlib.contextmanager
-def _catalog():
+def catalog():
     """Read connection to catalog.db, or None while the first import has not produced the file."""
     if not ready():
         yield None
@@ -75,7 +76,7 @@ def _rows(cursor):
 
 
 def stats():
-    with _catalog() as conn:
+    with catalog() as conn:
         if conn is None:
             return {"counts": {}, "meta": {}}
         counts = {r["type"]: r["n"] for r in conn.execute("SELECT type, COUNT(*) AS n FROM titles GROUP BY type")}
@@ -84,7 +85,7 @@ def stats():
 
 
 def letters(kind):
-    with _catalog() as conn:
+    with catalog() as conn:
         if conn is None:
             return None
         return _rows(conn.execute(
@@ -95,7 +96,7 @@ def letters(kind):
 def browse(kind, letter, sort, limit, offset):
     """One letter of one type. 'rating' is the Bayesian weighted rating (votes*rating + 1000*6.5) / (votes + 1000);
     titles without a rating or votes come last."""
-    with _catalog() as conn:
+    with catalog() as conn:
         if conn is None:
             return None
         if sort == "rating":
@@ -123,8 +124,16 @@ def browse(kind, letter, sort, limit, offset):
         return _rows(cur)
 
 
+def letter_total(kind, letter):
+    """Number of titles under one A-Z letter; None while there is no catalog."""
+    with catalog() as conn:
+        if conn is None:
+            return None
+        return conn.execute("SELECT COUNT(*) FROM titles WHERE type=? AND letter=?", (kind, letter)).fetchone()[0]
+
+
 def top(kind, min_votes, limit, offset):
-    with _catalog() as conn:
+    with catalog() as conn:
         if conn is None:
             return None
         return _rows(conn.execute(
@@ -141,7 +150,7 @@ def search(match, kind, sort, limit):
     literal statement. `limit` applies after ordering, so it is the best N matches under that order.
     """
     cols = ", ".join("t." + c for c in COLS.split(", "))
-    with _catalog() as conn:
+    with catalog() as conn:
         if conn is None:
             return None
         args = (match, kind, kind, limit)
@@ -161,7 +170,7 @@ def search(match, kind, sort, limit):
 
 
 def get(title_id):
-    with _catalog() as conn:
+    with catalog() as conn:
         if conn is None:
             return None
         row = conn.execute(

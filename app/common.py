@@ -13,6 +13,7 @@ PAGE_MAX = 200
 LANGS = ("cs", "sk", "en")
 MIN_RATED = 25  # a rating from fewer votes than this is shown but never ranked above better-supported titles
 TT_RE = re.compile(r"^tt\d{1,10}$")
+PREFIX_RE = re.compile(r"[A-Za-z0-9]{0,10}")
 
 
 def auth(authorization: str = Header(default=""), token: str = Query(default="")):
@@ -43,6 +44,13 @@ def check_kind(kind):
     if kind not in KINDS:
         raise HTTPException(400, "type must be movie or series")
     return kind
+
+
+def check_prefix(prefix, minimum=0):
+    """Lower-cased A-Z drill-down prefix: 0-10 characters of [A-Za-z0-9] (at least `minimum`), else HTTP 400."""
+    if not PREFIX_RE.fullmatch(prefix) or len(prefix) < minimum:
+        raise HTTPException(400, f"prefix must be {minimum}-10 characters of a-z, 0-9")
+    return prefix.lower()
 
 
 def check_tt(title_id):
@@ -79,4 +87,5 @@ def item_of(row, lang=""):
         "rating": row["rating"], "votes": row["votes"], "genres": (row["genres"] or "").split(",") if row["genres"] else [],
         "czsk": bool(row["local"]), "poster": f"/v1/poster/{row['id']}",
         "rating_reliable": (row["votes"] or 0) >= MIN_RATED,
+        "overview": "", "overview_lang": "",  # filled by overviews.annotate from caches only
     }
