@@ -38,6 +38,11 @@ def title(title_id: str, lang: str = ""):
     item["runtime"] = extra.get("runtime")
     item["poster_url"] = client.image_url(extra.get("poster"), "w500")
     item["backdrop_url"] = client.image_url(extra.get("backdrop"), "w780")
+    item["tagline"] = extra.get("tagline", "")
+    item["directors"] = extra.get("directors") or []
+    item["writers"] = extra.get("writers") or []
+    item["cast"] = [{"name": p["name"], "role": p.get("role", ""), "photo_url": client.image_url(p.get("photo"), "w185")}
+                    for p in extra.get("cast") or []]
     base = "plugin://plugin.video.nokturno/"
     item["play"] = (f"{base}?action=play&type=movie&id={title_id}&ask=1" if kind == "movie"
                     else f"{base}?action=seasons&id={title_id}")

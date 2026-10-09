@@ -108,3 +108,23 @@ def test_overview_is_requested_and_cached_per_language(client, monkeypatch):
         client.get(f"/v1/title/tt0000008?lang={lang}")
     assert len(seen) == calls  # a second visit in the same languages is served entirely from the cache
     assert tmdb_detail.DETAIL_VERSION >= 4
+
+
+def test_detail_has_cast_directors_writers_from_tmdb_credits(client):
+    d = client.get("/v1/title/tt0000001").json()
+    assert d["directors"] == ["Jan Hrebejk"]
+    assert d["writers"] == ["Petr Jarchovsky"]  # Screenplay + Writer of the same person count once, a gaffer not at all
+    assert d["cast"][0] == {"name": "Jiri Kodet", "role": "Sebesta", "photo_url": "https://image.tmdb.org/t/p/w185/k.jpg"}
+    assert d["cast"][1]["photo_url"] is None and d["tagline"] == ""
+
+
+def test_title_without_credits_still_answers_with_empty_lists(client):
+    d = client.get("/v1/title/tt9999999").json()
+    assert (d["cast"], d["directors"], d["writers"]) == ([], [], [])
+    assert d["tagline"] == "Eng tag"
+
+
+def test_credits_helper_caps_cast_and_uses_series_creators():
+    data = {"credits": {"cast": [{"name": f"A{n}"} for n in range(40)], "crew": []}, "created_by": [{"name": "Vince"}]}
+    cast, directors, writers = tmdb_detail._credits(data)
+    assert len(cast) == tmdb_detail.MAX_CAST and directors == ["Vince"] and writers == []

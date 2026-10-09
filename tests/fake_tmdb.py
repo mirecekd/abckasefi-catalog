@@ -67,7 +67,13 @@ def _movie(path, params):
                 "release_date": "2020-05-05", "genres": [{"name": "Drama"}], "vote_average": 7.0, "runtime": 100}
     if path == "/movie/77":
         return {"title": "Pelisky", "overview": "Popis filmu", "poster_path": "/p.jpg", "backdrop_path": "/b.jpg",
-                "vote_average": 8.1, "vote_count": 100, "runtime": 118}
+                "vote_average": 8.1, "vote_count": 100, "runtime": 118,
+                "credits": {"cast": [{"name": "Jiri Kodet", "character": "Sebesta", "profile_path": "/k.jpg"},
+                                      {"name": "Libuse Safrankova", "character": "", "profile_path": None}],
+                            "crew": [{"name": "Jan Hrebejk", "job": "Director"},
+                                     {"name": "Petr Jarchovsky", "job": "Screenplay"},
+                                     {"name": "Petr Jarchovsky", "job": "Writer"},
+                                     {"name": "Somebody", "job": "Gaffer"}]}}
     if path == "/movie/top_rated":
         return {"results": [{"id": 77, "title": "Pelisky", "vote_average": 8.1, "release_date": "1999-01-01"},
                             {"id": 99, "title": "Neznamy", "vote_average": 7.0, "release_date": "2020-05-05"}], "total_pages": 3}

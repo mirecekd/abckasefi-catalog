@@ -4,7 +4,9 @@ from . import config, db
 from . import tmdb_client as client
 
 DETAIL_TTL = 30 * 86400
-DETAIL_VERSION = 4  # v2: media/year/genres/original; v3: overview_lang + EN fallback; v4: overview cached per language
+DETAIL_VERSION = 5  # v2: media/year/genres/original; v3: overview_lang + EN fallback; v4: overview per language; v5: credits
+MAX_CAST = 15
+WRITER_JOBS = {"Writer", "Screenplay", "Story", "Novel", "Author"}
 
 
 def _overview(media, tmdb_id, lang):
@@ -19,6 +21,19 @@ def _overview(media, tmdb_id, lang):
     return "", "", ""
 
 
+def _credits(data):
+    """(cast, directors, writers) from a TMDB detail fetched with append_to_response=credits. A series has no
+    director of its own, so its creators stand in for them."""
+    credits = data.get("credits") or {}
+    cast = [{"name": p["name"], "role": p.get("character") or "", "photo": p.get("profile_path")}
+            for p in (credits.get("cast") or [])[:MAX_CAST] if p.get("name")]
+    crew = credits.get("crew") or []
+    directors = [p["name"] for p in crew if p.get("job") == "Director" and p.get("name")]
+    directors = directors or [p["name"] for p in data.get("created_by") or [] if p.get("name")]
+    writers = [p["name"] for p in crew if p.get("job") in WRITER_JOBS and p.get("name")]
+    return cast, list(dict.fromkeys(directors)), list(dict.fromkeys(writers))
+
+
 def detail(imdb_id, kind, lang=""):
     """Overview in `lang` (cs|sk|en; empty = default), poster, backdrop, TMDB rating, runtime (or None).
 
@@ -31,9 +46,10 @@ def detail(imdb_id, kind, lang=""):
         found = client.find(imdb_id)
         if not found:
             return None
-        data = client.request(f"/{found['media']}/{found['tmdb_id']}", {})
+        data = client.request(f"/{found['media']}/{found['tmdb_id']}", {"append_to_response": "credits"})
         if data is None:
             return None
+        cast, directors, writers = _credits(data)
         base = {
             "media": found["media"], "year": (data.get("release_date") or data.get("first_air_date") or "")[:4],
             "genres": [g["name"] for g in data.get("genres", []) if g.get("name")],
@@ -42,6 +58,7 @@ def detail(imdb_id, kind, lang=""):
             "tmdb_rating": data.get("vote_average"), "tmdb_votes": data.get("vote_count"),
             "runtime": data.get("runtime") or (data.get("episode_run_time") or [None])[0],
             "title": data.get("title") or data.get("name"), "seasons": data.get("number_of_seasons"),
+            "cast": cast, "directors": directors, "writers": writers,
         }
         db.kv_set(key, base)
     code = lang or config.TMDB_LANG[:2]
