@@ -29,7 +29,7 @@ CREATE INDEX ix_browse ON titles(type, letter, sortkey);
 CREATE VIRTUAL TABLE fts USING fts5(name, orig, content='', tokenize='unicode61 remove_diacritics 2');
 """
 
-SORTS = ("name", "rating", "year")
+SORTS = ("name", "rating", "votes", "year")  # accepted by /v1/titles
 COLS = "id, type, name, orig, year, rating, votes, genres, letter, local, name_cs, name_sk, name_en"
 
 
@@ -93,13 +93,22 @@ def letters(kind):
 
 
 def browse(kind, letter, sort, limit, offset):
+    """One letter of one type. 'rating' is the Bayesian weighted rating (votes*rating + 1000*6.5) / (votes + 1000);
+    titles without a rating or votes come last."""
     with _catalog() as conn:
         if conn is None:
             return None
         if sort == "rating":
             cur = conn.execute(
                 "SELECT " + COLS + " FROM titles "
-                "WHERE type=? AND letter=? ORDER BY rating DESC, votes DESC LIMIT ? OFFSET ?",
+                "WHERE type=? AND letter=? ORDER BY (rating IS NULL OR COALESCE(votes, 0)=0), "
+                "(COALESCE(votes, 0)*COALESCE(rating, 0) + 1000*6.5) / (COALESCE(votes, 0) + 1000) DESC, "
+                "votes DESC, sortkey LIMIT ? OFFSET ?",
+                (kind, letter, limit, offset))
+        elif sort == "votes":
+            cur = conn.execute(
+                "SELECT " + COLS + " FROM titles "
+                "WHERE type=? AND letter=? ORDER BY votes DESC, sortkey LIMIT ? OFFSET ?",
                 (kind, letter, limit, offset))
         elif sort == "year":
             cur = conn.execute(
@@ -127,7 +136,8 @@ def top(kind, min_votes, limit, offset):
 def search(match, kind, sort, limit):
     """`match` must already be a safe FTS5 expression (see main.fts_query); kind '' = both types.
 
-    sort: 'popular' (most voted first, default for search), 'name', 'rating' or 'year'. Each order is its own
+    sort: 'popular' or its alias 'votes' (most voted first, default for search), 'name', 'rating' (the same
+    Bayesian weighted rating as browse) or 'year'. Each order is its own
     literal statement. `limit` applies after ordering, so it is the best N matches under that order.
     """
     cols = ", ".join("t." + c for c in COLS.split(", "))
@@ -137,7 +147,10 @@ def search(match, kind, sort, limit):
         args = (match, kind, kind, limit)
         base = f"SELECT {cols} FROM fts JOIN titles t ON t.rowid=fts.rowid WHERE fts MATCH ? AND (?='' OR t.type=?) "
         if sort == "rating":
-            cur = conn.execute(base + "ORDER BY t.rating DESC NULLS LAST, t.votes DESC LIMIT ?", args)
+            cur = conn.execute(
+                base + "ORDER BY (t.rating IS NULL OR COALESCE(t.votes, 0)=0), "
+                "(COALESCE(t.votes, 0)*COALESCE(t.rating, 0) + 1000*6.5) / (COALESCE(t.votes, 0) + 1000) DESC, "
+                "t.votes DESC LIMIT ?", args)
         elif sort == "year":
             cur = conn.execute(base + "ORDER BY t.year DESC NULLS LAST, t.votes DESC LIMIT ?", args)
         elif sort == "name":

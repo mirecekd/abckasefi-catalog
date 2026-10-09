@@ -11,7 +11,7 @@ def _row(title_id):
 
 def test_filter_keeps_popular_and_czech_named(built):
     # kept: tt1, tt5 (300 votes), tt2 (7 votes but a CZ name), tt3, tt7; dropped: tt4 adult, tt6 (50 votes, no CZ name)
-    assert db.stats()["counts"] == {"movie": 8, "series": 2}
+    assert db.stats()["counts"] == {"movie": 11, "series": 2}
     assert db.get("tt0000004") is None
     assert db.get("tt0000006") is None
 

@@ -25,12 +25,12 @@ def test_search_ignores_diacritics_and_prefix(client):
 def test_search_survives_hostile_input(client, q):
     r = client.get("/v1/search", params={"q": q + "zz"})
     assert r.status_code == 200
-    assert db.stats()["counts"]["movie"] == 8  # table still there
+    assert db.stats()["counts"]["movie"] == 11  # table still there
 
 
-def test_bad_type_and_sort_are_rejected_or_defaulted(client):
+def test_bad_type_and_sort_are_rejected(client):
     assert client.get("/v1/letters?type=x").status_code == 400
-    assert client.get("/v1/titles?type=movie&letter=P&sort=evil;drop").status_code == 200
+    assert client.get("/v1/titles?type=movie&letter=P&sort=evil;drop").status_code == 400
 
 
 def _search(client, **params):

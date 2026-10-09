@@ -28,12 +28,16 @@ BASICS = [
     ("tt0000012", "movie", "Armageddon Time", "0", "2022", "Drama"),
     ("tt0000013", "movie", "Praying for Armageddon", "0", "2023", "Doc"),
     ("tt0000014", "movie", "Alien Armageddon", "0", "2011", "Sci-Fi"),
+    ("tt0000030", "movie", "Quorum Obscure", "0", "2003", "Drama"),
+    ("tt0000031", "movie", "Quasar Epic", "0", "1990", "Sci-Fi"),
+    ("tt0000032", "movie", "Quartz Middle", "0", "2018", "Drama"),
 ]
 RATINGS = {"tt0000020": (9.2, 2000000),"tt0000001": (8.2, 5000), "tt0000002": (6.0, 7), "tt0000003": (9.5, 90000), "tt0000004": (5.0, 9000),
            "tt0000005": (7.0, 300), "tt0000006": (6.5, 50), "tt0000007": (7.7, 800),
-           "tt0000011": (6.7, 480000), "tt0000012": (6.4, 18000), "tt0000013": (7.2, 836), "tt0000014": (2.1, 1284)}
+           "tt0000011": (6.7, 480000), "tt0000012": (6.4, 18000), "tt0000013": (7.2, 836), "tt0000014": (2.1, 1284),
+           "tt0000030": (9.4, 20), "tt0000031": (8.8, 2000000), "tt0000032": (7.0, 5000)}  # letter Q: sorting fixtures
 AKAS = [("tt0000001", "CZ", "Pelíšky"), ("tt0000001", "CZ", "Pracovni nazev:working"), ("tt0000002", "CZ", "Český film"), ("tt0000003", "CZ", "Perníkový táta"),
-        ("tt0000005", "SK", "7 dní"), ("tt0000007", "CZ", "Čelisti: Zákon")]
+        ("tt0000005", "SK", "7 dní"), ("tt0000030", "CZ", "Quorum Obscure"), ("tt0000007", "CZ", "Čelisti: Zákon")]
 
 
 def _write(name, header, rows):
