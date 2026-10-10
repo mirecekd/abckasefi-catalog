@@ -28,6 +28,7 @@
   .s { color:var(--muted); font-size:12px; margin-top:2px; }
   .cz { color:var(--accent); font-size:11px; }
   #more { margin:20px auto; display:block; }
+  #more[hidden] { display:none; }  /* an id rule with display:block would otherwise beat the hidden attribute */
   dialog { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:10px; max-width:760px; width:92vw; padding:0; }
   dialog::backdrop { background:rgba(0,0,0,.65); }
   .d { display:flex; gap:18px; padding:18px; flex-wrap:wrap; }
@@ -244,7 +245,7 @@ $("#sort").onchange = e => {
   show(true);  // plati pro pismena, hledani i seznamy TMDB (poradi se aplikuje na zobrazenou stranu seznamu)
 };
 $("#list").onchange = e => { st.list = e.target.value; st.mode = st.list ? "list" : "letter"; st.page = 1; show(true); };
-$("#more").onclick = () => { st.page++; show(false); };
+$("#more").onclick = () => { if (st.mode === "search") return; st.page++; show(false); };  // search has no pages
 let timer; $("#q").oninput = e => {
   clearTimeout(timer); const v = e.target.value.trim();
   timer = setTimeout(() => { if (v.length >= 2) { st.mode = "search"; st.q = v; show(true); } else if (!v) { st.mode = "letter"; st.page = 1; show(true); } }, 300);
