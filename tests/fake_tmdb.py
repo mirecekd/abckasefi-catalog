@@ -30,6 +30,18 @@ def _paged_page(page):
             "total_pages": PAGED_PAGES, "total_results": PAGED_PAGES * 20}
 
 
+ORIGIN_PAGES = {1: [601, 602], 2: [603, 604, 605, 606]}  # /discover/tv with_origin_country=CZ|SK|XC
+ORIGIN_IMDB = {"601": "tt0000040", "602": "tt0000041", "603": "tt0000007", "604": "tt0000043", "605": "tt0000001",
+               "606": None}  # 605: IMDb calls it a movie; 606: TMDB has no IMDb id
+
+
+def _discover_tv(params):
+    if params.get("with_origin_country") != "CZ|SK|XC":
+        return None
+    return {"results": [{"id": i} for i in ORIGIN_PAGES.get(int(params.get("page", 1)), [])],
+            "total_pages": len(ORIGIN_PAGES), "total_results": 6}
+
+
 def _tv(path):
     if path == "/tv/1396":
         return {"name": "Perníkový táta", "seasons": [
@@ -41,6 +53,8 @@ def _tv(path):
                             {"id": 502, "name": "Solidni", "vote_average": 8.0, "vote_count": 5000, "first_air_date": "2020-01-01"},
                             {"id": 503, "name": "Prumerny", "vote_average": 6.5, "vote_count": 900, "first_air_date": "2024-01-01"}],
                 "total_pages": 1}
+    if path.startswith("/tv/60") and path.endswith("/external_ids"):
+        return {"imdb_id": ORIGIN_IMDB[path.split("/")[2]]}
     if path.startswith("/tv/50") and path.endswith("/external_ids"):
         return {"imdb_id": {"501": "tt0050001", "502": "tt0050002", "503": "tt0050003"}[path.split("/")[2]]}
     return None
@@ -98,6 +112,8 @@ def fake_request(path, params):
         return {"movie_results": [{"id": 99}], "tv_results": []}
     if path == "/find/tt0000003":
         return {"movie_results": [], "tv_results": [{"id": 1396}]}
+    if path == "/discover/tv":
+        return _discover_tv(params)
     if path.startswith("/find/"):
         return {"movie_results": [{"id": 77}] if path.endswith("tt0000001") else [], "tv_results": []}
     if path.startswith("/tv/"):

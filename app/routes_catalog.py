@@ -2,7 +2,7 @@
 """Catalog browsing, A-Z prefix drill-down and full-text search routes."""
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
-from . import db, overviews, prefixes
+from . import db, filters, overviews, prefixes
 from .common import (
     KINDS,
     PAGE_MAX,
@@ -25,26 +25,37 @@ def letters(type: str = "movie"):
 
 
 @router.get("/v1/prefixes")
-def prefix_children(type: str = "movie", prefix: str = ""):
+def prefix_children(type: str = "movie", prefix: str = "", genre: str = "", origin: str = ""):
     """One level of the A-Z drill-down: how many titles start with `prefix` (total), how many equal it (exact) and
-    how many start with each longer prefix (children). Counted over the normalised key (a-z, 0-9 only)."""
-    return need_ready(prefixes.children(check_kind(type), check_prefix(prefix)))
+    how many start with each longer prefix (children). Counted over the normalised key (a-z, 0-9 only), optionally
+    only for one `genre` (IMDb name, e.g. Sci-Fi) and/or `origin=czsk` (Czech, Slovak, Czechoslovak series)."""
+    return need_ready(prefixes.children(check_kind(type), check_prefix(prefix), filters.check_genre(genre),
+                                        filters.check_origin(origin)))
+
+
+@router.get("/v1/genres")
+def genres(type: str = "movie", origin: str = ""):
+    """Genres present in one type with their title counts, biggest first; `origin=czsk` counts only CZ/SK series."""
+    return need_ready(filters.genre_counts(check_kind(type), filters.check_origin(origin)))
 
 
 @router.get("/v1/titles")
 def titles(background: BackgroundTasks, type: str = "movie", letter: str = "A", sort: str = "name", lang: str = "",
-           prefix: str = "", exact: int = Query(0, ge=0, le=1),
+           prefix: str = "", exact: int = Query(0, ge=0, le=1), genre: str = "", origin: str = "",
            page: int = Query(1, ge=1), per_page: int = Query(50, ge=1, le=PAGE_MAX)):
     """Titles of one letter, or - with `prefix` (1-10 of a-z, 0-9; `letter` is then ignored) - of one prefix;
     `exact=1` keeps only titles whose normalised key equals the prefix (with an empty prefix: titles whose key is
-    empty, e.g. purely non-Latin names). `total` counts all matches."""
+    empty, e.g. purely non-Latin names). `genre` (IMDb name, case-insensitive) and `origin=czsk` narrow the set; with
+    either of them `letter` is ignored and the prefix may be empty, giving one flat list (e.g. the best Sci-Fi by
+    `sort=rating`). `total` counts all matches."""
     check_lang(lang)
     if sort not in db.SORTS:
         raise HTTPException(400, "sort must be one of " + ", ".join(db.SORTS))
     kind, offset = check_kind(type), (page - 1) * per_page
-    if prefix or exact:
-        checked = check_prefix(prefix, 0 if exact else 1)
-        rows, total = need_ready(prefixes.titles(kind, checked, bool(exact), sort, per_page + 1, offset))
+    genre, czsk = filters.check_genre(genre), filters.check_origin(origin)
+    if prefix or exact or genre or czsk:
+        checked = check_prefix(prefix, 0 if (exact or genre or czsk) else 1)
+        rows, total = need_ready(prefixes.titles(kind, checked, bool(exact), sort, per_page + 1, offset, genre, czsk))
     else:
         letter = letter.upper()[:3]
         rows = need_ready(db.browse(kind, letter, sort, per_page + 1, offset))

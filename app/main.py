@@ -31,8 +31,8 @@ def _importer_loop():
 
 
 def _stale():
-    built = db.stats()["meta"].get("built")
-    if not built:
+    meta = db.stats()["meta"]
+    if not meta.get("built") or "origin_built" not in meta:  # no origin_built = made before the CZ/SK origin flag existed
         return True
     age_h = (time.time() - os.path.getmtime(db.CATALOG)) / 3600
     return age_h >= config.IMPORT_EVERY_HOURS
@@ -46,6 +46,7 @@ async def lifespan(_app):
     db.init()
     try:
         migrate.add_skey()  # an older catalog.db is upgraded in place; a missing one is built by the importer thread
+        migrate.add_origin()  # (origin stays 0 until the importer rebuilds it, which _stale() forces once)
     except sqlite3.Error:
         log.exception("catalog migration failed, prefix browsing is unavailable until the next import")
     threading.Thread(target=_importer_loop, daemon=True, name="importer").start()

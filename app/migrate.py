@@ -47,3 +47,24 @@ def add_skey(path=None):
     if changed:
         log.info("catalog migrated: skey column and index added")
     return changed
+
+
+def add_origin(path=None):
+    """Idempotently add titles.origin (0 until the next import fills it); returns True if the column was added."""
+    path = path or db.CATALOG
+    if not os.path.exists(path):
+        return False
+    conn = db.connect(path)
+    try:
+        if "origin" in {r["name"] for r in conn.execute("PRAGMA table_info(titles)")}:
+            return False
+        conn.execute("ALTER TABLE titles ADD COLUMN origin INT NOT NULL DEFAULT 0")
+        conn.commit()
+    except sqlite3.Error:
+        conn.rollback()
+        log.exception("migration of %s failed", path)
+        raise
+    finally:
+        conn.close()
+    log.info("catalog migrated: origin column added")
+    return True

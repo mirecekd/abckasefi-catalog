@@ -74,7 +74,9 @@ Public routes (no token): `GET /health`, the web UI at `GET /`, `/static/...`, a
 | `GET /health` | none | Public. Returns `ok`, `ready` (catalog built), `tmdb` (key configured), title counts and build metadata. |
 | `GET /v1/ping` | none | Cheap authenticated check: a `200` proves both the URL and the token. Returns `ok`, `version`, `tmdb`, `ready`. |
 | `GET /v1/letters` | `type` = `movie` (default) or `series` | Letters with title counts, `0-9` last. |
-| `GET /v1/titles` | `type` (`movie`/`series`, default `movie`), `letter` (default `A`, or `0-9`), `sort` = `name` (default), `rating` or `year`, `lang` = `cs`, `sk`, `en` (or empty), `page` (>= 1, default 1), `per_page` (1-200, default 50) | One page of the A-Z listing. Returns `page`, `per_page`, `has_more` and `items`. |
+| `GET /v1/titles` | `type` (`movie`/`series`, default `movie`), `letter` (default `A`, or `0-9`), `prefix` (1-10 of a-z, 0-9), `exact` (0/1), `genre` (IMDb genre, e.g. `Sci-Fi`, case-insensitive), `origin` = `czsk`, `sort` = `name` (default), `rating`, `votes` or `year`, `lang` = `cs`, `sk`, `en` (or empty), `page` (>= 1, default 1), `per_page` (1-200, default 50) | One page of the A-Z listing. With `genre` and/or `origin` the `letter` is ignored and `prefix` may be empty: one flat list (`genre=Sci-Fi&sort=rating` = the best Sci-Fi). Returns `page`, `per_page`, `has_more`, `total` and `items`. |
+| `GET /v1/prefixes` | `type`, `prefix` (0-10 of a-z, 0-9), `genre`, `origin` | One level of the A-Z drill-down: `total`, `exact` and `children` (`prefix`, `n`), optionally only for one genre and/or the Czech/Slovak origin. |
+| `GET /v1/genres` | `type`, `origin` = `czsk` (optional) | Genres present in the catalog with title counts, biggest first. |
 | `GET /v1/search` | `q` (2-80 characters, required), `type` (`movie`, `series` or empty for both), `sort` = `popular` (default, by votes), `name`, `rating` or `year`, `lang`, `limit` (1-200, default 40) | Full-text search without diacritics. The order is applied to all matches before `limit`. `has_more` says whether more than `limit` titles match. |
 | `GET /v1/lists` | none | Names of the available TMDB lists per type. |
 | `GET /v1/list/{type}/{name}` | `page` (1-500, default 1), `sort` = `tmdb` (default), `rating`, `votes`, `year` or `name`, `lang`, `per_page` (1-100, default 20) | A TMDB list mapped to IMDb ids. Titles missing from the catalog are still returned, built from the TMDB data. Needs `TMDB_API_KEY`. |
@@ -90,7 +92,8 @@ Notes:
 - TMDB serves lists in pages of 20 and refuses pages above 500, so a list is capped at 500 x 20 = 10000 items. A page past the end returns an empty `items` list instead of an error.
 - List `sort` orders the items of the requested page only (`sorted_within_page` says so). Ratings based on very few votes are flagged with `rating_reliable: false` and ranked below better-supported ones.
 - `lang` accepts `cs`, `sk` or `en`; anything else gives `400`. When a title has no name in the requested language, the display title falls back (cs to sk, sk to cs, then the English or original name) and `title_lang` shows the language actually used.
-- An invalid `type`, `sort` or `lang` gives `400`. A malformed title id gives `404`. While the catalog is not built yet, data routes give `503`.
+- `origin=czsk` keeps series TMDB files under the origin countries CZ, SK or XC (Czechoslovakia) that have an IMDb id (about 800). They are kept in the catalog even with few IMDb votes or no rating; `sort=rating` ranks them with a smaller prior (100 instead of 1000 votes) because Czech titles have few votes, and titles without a rating come last. The flag is filled by the import from TMDB (needs `TMDB_API_KEY`); if TMDB is unreachable the previous flags are kept.
+- An invalid `type`, `sort`, `lang`, `genre` or `origin` gives `400`. A malformed title id gives `404`. While the catalog is not built yet, data routes give `503`.
 
 ## Web UI
 

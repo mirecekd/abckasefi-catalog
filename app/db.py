@@ -21,7 +21,7 @@ CATALOG_SCHEMA = """
 CREATE TABLE titles(
   id TEXT PRIMARY KEY, type TEXT NOT NULL, name TEXT NOT NULL, orig TEXT, year INT,
   rating REAL, votes INT, genres TEXT, letter TEXT NOT NULL, sortkey TEXT NOT NULL, local INT,
-  name_cs TEXT, name_sk TEXT, name_en TEXT, skey TEXT NOT NULL DEFAULT '');
+  name_cs TEXT, name_sk TEXT, name_en TEXT, skey TEXT NOT NULL DEFAULT '', origin INT NOT NULL DEFAULT 0);
 CREATE TABLE meta(k TEXT PRIMARY KEY, v TEXT);
 """
 CATALOG_INDEXES = """

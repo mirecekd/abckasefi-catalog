@@ -13,7 +13,7 @@ import time
 
 import httpx
 
-from . import config, db
+from . import config, db, origin
 from .keys import skey, sortkey
 
 log = logging.getLogger("catalog.import")
@@ -141,33 +141,39 @@ def build(workdir=None):
         log.exception("cannot create %s", workdir)
         raise
     paths = {n: download(n, workdir) for n in FILES}
+    origin_ids = origin.fetch_ids()
+    if origin_ids is None:  # TMDB off or unreachable: keep the origin flags the live catalog already has
+        origin_ids = origin.previous_ids()
     votes = load_votes(paths["title.ratings"])
-    titles = load_titles(paths["title.basics"], votes)
+    titles = load_titles(paths["title.basics"], votes.keys() | origin_ids)
     names = load_names(paths["title.akas"], titles.keys())
     tmp = db.CATALOG + ".new"
     _remove(tmp)
     conn = sqlite3.connect(tmp)
     try:
         conn.executescript(db.CATALOG_SCHEMA)
-        kept = 0
+        kept = flagged = 0
         for tid, (kind, orig, year, genres) in titles.items():
             rating, nvotes = votes.get(tid, (None, 0))
             tn = names.get(tid, {})
             name, czsk = pick_name(tn, orig)
-            # keep popular titles, plus less-voted ones that have a Czech/Slovak name
-            if nvotes < config.MIN_VOTES and not (czsk and nvotes >= config.LOCAL_MIN_VOTES):
+            is_origin = kind == "series" and tid in origin_ids  # TMDB lists some IMDb "movie" ids as TV: not an origin
+            # keep popular titles, plus less-voted ones with a Czech/Slovak name or a CZ/SK origin
+            if not is_origin and nvotes < config.MIN_VOTES and not (czsk and nvotes >= config.LOCAL_MIN_VOTES):
                 continue
             key = sortkey(name)
-            conn.execute("INSERT INTO titles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            conn.execute("INSERT INTO titles VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (tid, kind, name, orig if czsk and orig != name else None, year, rating, nvotes,
                           genres, letter_of(key), key, 1 if czsk else 0,
-                          tn.get("cs"), tn.get("sk"), tn.get("en") or orig, skey(name)))
+                          tn.get("cs"), tn.get("sk"), tn.get("en") or orig, skey(name), int(is_origin)))
             kept += 1
+            flagged += is_origin
         conn.executescript(db.CATALOG_INDEXES)
         conn.execute("INSERT INTO fts(rowid, name, orig) SELECT rowid, sortkey, "
                      "TRIM(COALESCE(orig,'') || ' ' || COALESCE(name_sk,'') || ' ' || COALESCE(name_en,'')) FROM titles")
         conn.execute("INSERT INTO meta VALUES('built', datetime('now'))")
         conn.execute("INSERT INTO meta VALUES('min_votes', ?)", (str(config.MIN_VOTES),))
+        conn.execute("INSERT INTO meta VALUES('origin_built', ?)", (str(flagged),))  # present = origin is filled
         conn.commit()
     except sqlite3.Error:
         conn.close()
