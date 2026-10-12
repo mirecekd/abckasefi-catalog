@@ -155,3 +155,12 @@ def test_import_keeps_previous_flags_when_tmdb_is_down(tmp_path, monkeypatch, bu
     conn = sqlite3.connect(str(tmp_path / "rebuilt.db"))
     assert [r[0] for r in conn.execute("SELECT id FROM titles WHERE origin=1")] == ["tt0000040"]
     conn.close()
+
+
+def test_flat_lists_the_whole_type_best_rated_first(client):
+    """flat=1 = no letter, no filter: what the web UI's "Vse" button and 'sort by rating' use."""
+    body = _titles(client, type="movie", flat=1, sort="rating", per_page=3)
+    assert _ids(body)[:2] == ["tt0000020", "tt0000031"]  # Godfather 9.2 then Quasar Epic 8.8 (letter Q): any letter
+    assert body["total"] == db.stats()["counts"]["movie"] and body["has_more"] is True
+    assert _titles(client, type="movie", flat=1, sort="name", per_page=2)["items"][0]["id"] != body["items"][0]["id"]
+    assert client.get("/v1/titles", params={"type": "movie", "flat": 2}).status_code == 422

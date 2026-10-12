@@ -28,7 +28,8 @@
   .s { color:var(--muted); font-size:12px; margin-top:2px; }
   .cz { color:var(--accent); font-size:11px; }
   #more { margin:20px auto; display:block; }
-  #more[hidden] { display:none; }  /* an id rule with display:block would otherwise beat the hidden attribute */
+  #more[hidden], #letters[hidden] { display:none; }  /* an id rule with display:block/flex would otherwise beat the hidden attribute */
+  #originBox { cursor:pointer; user-select:none; }
   dialog { background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:10px; max-width:760px; width:92vw; padding:0; }
   dialog::backdrop { background:rgba(0,0,0,.65); }
   .d { display:flex; gap:18px; padding:18px; flex-wrap:wrap; }
@@ -58,6 +59,8 @@
     </span>
     <input id="q" type="search" placeholder="Hledat (bez diakritiky)" autocomplete="off">
     <select id="list"><option value="">Seznamy TMDB...</option></select>
+    <select id="genre" title="Filtr podle žánru, výsledek je rovnou podle hodnocení"><option value="">Žánr...</option></select>
+    <label id="originBox" class="s" hidden><input type="checkbox" id="origin"> České a slovenské</label>
     <select id="sort">
       <option value="name">Podle abecedy</option>
       <option value="popular">Nejvíc hlasů</option>
@@ -84,7 +87,19 @@ const $ = s => document.querySelector(s);
 const LANGS = ["cs", "sk", "en"];
 const savedLang = (() => { try { return localStorage.getItem("abckasefi.lang"); } catch (e) { return null; } })();
 const st = { kind: "movie", letter: null, sort: "name", sortTouched: false, page: 1, mode: "letter", list: "", q: "",
-  lang: LANGS.includes(savedLang) ? savedLang : "cs" };
+  genre: "", origin: false, all: false, lang: LANGS.includes(savedLang) ? savedLang : "cs" };
+// shortcut: the CZ/SK origin flag exists for series only, add "movie" once the catalog flags films too
+const ORIGIN_KINDS = ["series"];
+const HIDDEN_GENRES = new Set(["Game-Show", "News", "Reality-TV", "Short", "Talk-Show"]);
+const GENRE_CS = { Action: "Akční", Adventure: "Dobrodružný", Animation: "Animovaný", Biography: "Životopisný", Comedy: "Komedie",
+  Crime: "Krimi", Documentary: "Dokumentární", Drama: "Drama", Family: "Rodinný", Fantasy: "Fantasy", "Film-Noir": "Film-noir",
+  History: "Historický", Horror: "Horor", Music: "Hudební", Musical: "Muzikál", Mystery: "Mysteriózní", Romance: "Romantický",
+  "Sci-Fi": "Sci-Fi", Sport: "Sportovní", Thriller: "Thriller", War: "Válečný", Western: "Western" };
+const narrowed = () => st.genre || st.origin;  // genre / origin filter: one flat list, letters do not apply
+const filtered = () => st.mode === "letter" && (narrowed() || st.all);
+// entering a view (a letter, "Vse", a filter) always starts in that view's own order: best rated first for the flat
+// lists, alphabetical for a letter. A choice made in the sort box only lasts until the next view is entered.
+const enterView = () => { $("#sort").value = st.sort = filtered() ? "rating" : "name"; st.sortTouched = false; };  // st.all = "Vse": the whole type, not one letter
 const LANG_URLS = ["/v1/titles", "/v1/search", "/v1/list/", "/v1/title/"];  // endpointy, ktere ?lang= znaji
 const token = new URLSearchParams(location.search).get("token") || "";
 const api = (p) => {
@@ -111,13 +126,47 @@ async function loadLetters() {
   clear($("#letters"));
   try {
     const ls = await api("/v1/letters?type=" + st.kind);
+    const all = h("button", { "data-l": "*", title: "Všechny tituly, bez ohledu na písmeno" }, "Vše");
+    all.onclick = () => {
+      st.mode = "letter"; st.all = true; st.page = 1; $("#q").value = ""; $("#list").value = "";
+      enterView(); show(true);
+    };
+    $("#letters").append(all);
     for (const l of ls) {
       const b = h("button", { "data-l": l.letter }, l.letter, h("small", {}, l.n));
-      b.onclick = () => { st.mode = "letter"; st.letter = l.letter; st.page = 1; $("#q").value = ""; $("#list").value = ""; show(true); };
+      b.onclick = () => {
+        st.mode = "letter"; st.all = false; st.letter = l.letter; st.page = 1; $("#q").value = ""; $("#list").value = "";
+        enterView(); show(true);
+      };
       $("#letters").append(b);
     }
     if (!st.letter || !ls.find(x => x.letter === st.letter)) st.letter = ls.length ? ls[0].letter : null;
   } catch (e) { say(e.message, true); }
+}
+
+async function loadGenres() {
+  const sel = $("#genre");
+  clear(sel); sel.append(h("option", { value: "" }, "Žánr..."));
+  try {
+    const gs = await api("/v1/genres?type=" + st.kind + (st.origin ? "&origin=czsk" : ""));
+    for (const g of gs) if (!HIDDEN_GENRES.has(g.genre)) sel.append(h("option", { value: g.genre }, (GENRE_CS[g.genre] || g.genre) + " (" + g.n + ")"));
+  } catch (e) { say(e.message, true); }
+  sel.value = st.genre;
+  if (sel.value !== st.genre) st.genre = "";  // the genre has no titles in this selection
+}
+
+// a filter change starts a flat list, best rated first (unless the user picked another order); letters do not apply to it
+function applyFilter() {
+  st.mode = "letter"; st.page = 1; st.list = ""; $("#q").value = ""; $("#list").value = "";
+  $("#letters").hidden = narrowed();  // a genre / CZ-SK list is one flat list: the letter bar does not apply
+  enterView(); show(true);
+}
+
+// leaving the filter (search, TMDB list, other kind); returns true when the genre counts have to be reloaded
+function clearFilter() {
+  const hadOrigin = st.origin;
+  st.genre = ""; st.origin = false; $("#genre").value = ""; $("#origin").checked = false; $("#letters").hidden = false;
+  return hadOrigin;
 }
 
 async function lists() {
@@ -148,21 +197,26 @@ const lazyPoster = new IntersectionObserver(es => es.forEach(e => {
   img.src = "/v1/poster/" + encodeURIComponent(el.dataset.id) + "?size=w185" + (token ? "&token=" + encodeURIComponent(token) : "");
 }), { rootMargin: "300px" });
 
+let showSeq = 0;  // a slow answer to an older request must not land in a newer list (fast filter changes)
 async function show(reset) {
+  const seq = ++showSeq;
   if (reset) clear($("#grid"));
-  document.querySelectorAll("#letters button").forEach(b => b.classList.toggle("on", st.mode === "letter" && b.dataset.l === st.letter));
+  document.querySelectorAll("#letters button").forEach(b => b.classList.toggle("on", st.mode === "letter" && !narrowed() && (st.all ? b.dataset.l === "*" : b.dataset.l === st.letter)));
   let url;
   if (st.mode === "search") url = "/v1/search?q=" + encodeURIComponent(st.q) + "&type=" + st.kind + "&sort=" + (st.sortTouched ? st.sort : "popular");
   else if (st.mode === "list") url = `/v1/list/${st.kind}/${st.list}?page=${st.page}&sort=${st.sortTouched ? (st.sort === "popular" ? "votes" : st.sort) : "tmdb"}`;
+  else if (filtered()) url = `/v1/titles?type=${st.kind}` + (st.genre ? "&genre=" + encodeURIComponent(st.genre) : "") + (st.origin ? "&origin=czsk" : "")
+    + (st.all && !narrowed() ? "&flat=1" : "") + `&sort=${st.sort === "popular" ? "votes" : st.sort}&page=${st.page}`;
   else if (st.letter) url = `/v1/titles?type=${st.kind}&letter=${encodeURIComponent(st.letter)}&sort=${st.sort === "popular" ? "rating" : st.sort}&page=${st.page}`;
   else return;
   say("Načítám...");
   try {
     const r = await api(url);
+    if (seq !== showSeq) return;
     r.items.forEach(it => $("#grid").append(card(it)));
-    say(st.mode === "search" ? `Nalezeno ${r.items.length}` : `Strana ${st.page}, ${$("#grid").children.length} položek`);
+    say(st.mode === "search" ? `Nalezeno ${r.items.length}` : `Strana ${st.page}, ${$("#grid").children.length} položek` + (r.total ? ` z ${r.total}` : ""));
     $("#more").hidden = st.mode === "search" || (st.mode === "letter" && r.items.length < r.per_page) || r.items.length === 0;
-  } catch (e) { say(e.message, true); $("#more").hidden = true; }
+  } catch (e) { if (seq === showSeq) { say(e.message, true); $("#more").hidden = true; } }
 }
 
 const fmtDate = d => (d ? d.split("-").reverse().map(x => String(Number(x))).join(". ") : "");
@@ -230,9 +284,10 @@ async function detail(id) {
 
 $("#kinds").onclick = async e => {
   const k = e.target.dataset.k; if (!k) return;
-  st.kind = k; st.mode = "letter"; st.page = 1; st.letter = null; $("#q").value = ""; $("#list").value = "";
+  st.kind = k; st.mode = "letter"; st.page = 1; st.letter = null; st.all = false; $("#q").value = ""; $("#list").value = "";
+  clearFilter(); enterView(); $("#originBox").hidden = !ORIGIN_KINDS.includes(k);
   document.querySelectorAll("#kinds button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
-  await loadLetters(); await lists(); show(true);
+  await loadLetters(); await lists(); await loadGenres(); show(true);
 };
 $("#lang").value = st.lang;
 $("#lang").onchange = e => {
@@ -242,20 +297,31 @@ $("#lang").onchange = e => {
 };
 $("#sort").onchange = e => {
   st.sort = e.target.value; st.sortTouched = true; st.page = 1;
+  // best rated / most voted / newest only make sense over the whole type: leave the letter; the alphabet goes back to it
+  if (st.mode === "letter" && !narrowed()) st.all = st.sort !== "name";
   show(true);  // plati pro pismena, hledani i seznamy TMDB (poradi se aplikuje na zobrazenou stranu seznamu)
 };
-$("#list").onchange = e => { st.list = e.target.value; st.mode = st.list ? "list" : "letter"; st.page = 1; show(true); };
+$("#list").onchange = e => {
+  st.list = e.target.value; st.mode = st.list ? "list" : "letter"; st.page = 1;
+  if (clearFilter()) loadGenres();
+  show(true);
+};
+$("#genre").onchange = e => { st.genre = e.target.value; applyFilter(); };
+$("#origin").onchange = async e => { st.origin = e.target.checked; await loadGenres(); applyFilter(); };
 $("#more").onclick = () => { if (st.mode === "search") return; st.page++; show(false); };  // search has no pages
 let timer; $("#q").oninput = e => {
   clearTimeout(timer); const v = e.target.value.trim();
-  timer = setTimeout(() => { if (v.length >= 2) { st.mode = "search"; st.q = v; show(true); } else if (!v) { st.mode = "letter"; st.page = 1; show(true); } }, 300);
+  timer = setTimeout(() => {
+    if (v.length >= 2) { st.mode = "search"; st.q = v; if (clearFilter()) loadGenres(); show(true); }  // search has no genre filter
+    else if (!v) { st.mode = "letter"; st.page = 1; show(true); }
+  }, 300);
 };
 (async () => {
   try {
     const hh = await fetch("/health").then(r => r.json());
     $("#stats").textContent = `${hh.counts.movie || 0} filmů, ${hh.counts.series || 0} seriálů` + (hh.tmdb ? "" : " | TMDB klíč chybí (bez obrázků)");
   } catch (e) { $("#stats").textContent = ""; }
-  await loadLetters(); await lists(); show(true);
+  await loadLetters(); await lists(); await loadGenres(); show(true);
 })();
 </script>
 </body>

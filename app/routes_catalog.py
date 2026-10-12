@@ -42,19 +42,20 @@ def genres(type: str = "movie", origin: str = ""):
 @router.get("/v1/titles")
 def titles(background: BackgroundTasks, type: str = "movie", letter: str = "A", sort: str = "name", lang: str = "",
            prefix: str = "", exact: int = Query(0, ge=0, le=1), genre: str = "", origin: str = "",
+           flat: int = Query(0, ge=0, le=1),
            page: int = Query(1, ge=1), per_page: int = Query(50, ge=1, le=PAGE_MAX)):
     """Titles of one letter, or - with `prefix` (1-10 of a-z, 0-9; `letter` is then ignored) - of one prefix;
     `exact=1` keeps only titles whose normalised key equals the prefix (with an empty prefix: titles whose key is
     empty, e.g. purely non-Latin names). `genre` (IMDb name, case-insensitive) and `origin=czsk` narrow the set; with
     either of them `letter` is ignored and the prefix may be empty, giving one flat list (e.g. the best Sci-Fi by
-    `sort=rating`). `total` counts all matches."""
+    `sort=rating`); `flat=1` does the same without any filter (the best of the whole type). `total` counts all matches."""
     check_lang(lang)
     if sort not in db.SORTS:
         raise HTTPException(400, "sort must be one of " + ", ".join(db.SORTS))
     kind, offset = check_kind(type), (page - 1) * per_page
     genre, czsk = filters.check_genre(genre), filters.check_origin(origin)
-    if prefix or exact or genre or czsk:
-        checked = check_prefix(prefix, 0 if (exact or genre or czsk) else 1)
+    if prefix or exact or genre or czsk or flat:
+        checked = check_prefix(prefix, 0 if (exact or genre or czsk or flat) else 1)
         rows, total = need_ready(prefixes.titles(kind, checked, bool(exact), sort, per_page + 1, offset, genre, czsk))
     else:
         letter = letter.upper()[:3]
