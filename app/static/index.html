@@ -157,13 +157,24 @@ async function loadGenres() {
 function applyFilter() {
   st.mode = "letter"; st.page = 1; st.list = ""; $("#q").value = ""; $("#list").value = "";
   $("#letters").hidden = narrowed();  // a genre / CZ-SK list is one flat list: the letter bar does not apply
-  enterView(); show(true);
+  lockLists(); enterView(); show(true);
 }
 
-// leaving the filter (search, TMDB list, other kind); returns true when the genre counts have to be reloaded
+// The TMDB lists come straight from TMDB and cannot be narrowed by genre or origin. While a filter is on, the two lists
+// that are just an order ("Nejlépe hodnocené", "Populární") act as that order INSIDE the filter instead of replacing it;
+// the others (in cinemas, upcoming, trending...) are greyed out because they would silently throw the filter away.
+const LIST_AS_SORT = { top_rated: "rating", popular: "popular" };
+function lockLists() {
+  const on = !!narrowed();
+  for (const o of $("#list").options) o.disabled = on && !!o.value && !(o.value in LIST_AS_SORT);
+  $("#list").title = on ? "S filtrem jde jen Nejlépe hodnocené a Populární (řadí v rámci filtru); ostatní seznamy TMDB nejdou filtrovat." : "";
+}
+
+// leaving the filter (search); returns true when the genre counts have to be reloaded
 function clearFilter() {
   const hadOrigin = st.origin;
   st.genre = ""; st.origin = false; $("#genre").value = ""; $("#origin").checked = false; $("#letters").hidden = false;
+  lockLists();
   return hadOrigin;
 }
 
@@ -171,6 +182,7 @@ async function lists() {
   const all = await api("/v1/lists"), sel = $("#list");
   clear(sel); sel.append(h("option", { value: "" }, "Seznamy TMDB..."));
   for (const [k, v] of Object.entries(all[st.kind] || {})) sel.append(h("option", { value: k }, v));
+  lockLists();
 }
 
 function card(it) {
@@ -283,9 +295,9 @@ async function detail(id) {
 $("#kinds").onclick = async e => {
   const k = e.target.dataset.k; if (!k) return;
   st.kind = k; st.mode = "letter"; st.page = 1; st.letter = null; st.all = false; $("#q").value = ""; $("#list").value = "";
-  clearFilter(); enterView();
   document.querySelectorAll("#kinds button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
-  await loadLetters(); await lists(); await loadGenres(); show(true);
+  await loadLetters(); await lists(); await loadGenres();  // the CZ/SK tick and the genre survive the switch
+  lockLists(); $("#letters").hidden = narrowed(); enterView(); show(true);
 };
 $("#lang").value = st.lang;
 $("#lang").onchange = e => {
@@ -300,9 +312,13 @@ $("#sort").onchange = e => {
   show(true);  // plati pro pismena, hledani i seznamy TMDB (poradi se aplikuje na zobrazenou stranu seznamu)
 };
 $("#list").onchange = e => {
-  st.list = e.target.value; st.mode = st.list ? "list" : "letter"; st.page = 1;
-  if (clearFilter()) loadGenres();
-  show(true);
+  const key = e.target.value;
+  if (narrowed() && key in LIST_AS_SORT) {  // keep the genre / CZ-SK filter, just change its order
+    st.sort = LIST_AS_SORT[key]; st.sortTouched = true; st.page = 1; st.mode = "letter";
+    $("#sort").value = st.sort; e.target.value = ""; show(true);
+    return;
+  }
+  st.list = key; st.mode = st.list ? "list" : "letter"; st.page = 1; show(true);
 };
 $("#genre").onchange = e => { st.genre = e.target.value; applyFilter(); };
 $("#origin").onchange = async e => { st.origin = e.target.checked; await loadGenres(); applyFilter(); };
