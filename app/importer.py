@@ -157,7 +157,7 @@ def build(workdir=None):
             rating, nvotes = votes.get(tid, (None, 0))
             tn = names.get(tid, {})
             name, czsk = pick_name(tn, orig)
-            is_origin = kind == "series" and tid in origin_ids  # TMDB lists some IMDb "movie" ids as TV: not an origin
+            is_origin = tid in origin_ids  # films and series alike: the ids come from both TMDB endpoints
             # keep popular titles, plus less-voted ones with a Czech/Slovak name or a CZ/SK origin
             if not is_origin and nvotes < config.MIN_VOTES and not (czsk and nvotes >= config.LOCAL_MIN_VOTES):
                 continue

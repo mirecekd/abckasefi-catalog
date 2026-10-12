@@ -25,7 +25,7 @@ def test_search_ignores_diacritics_and_prefix(client):
 def test_search_survives_hostile_input(client, q):
     r = client.get("/v1/search", params={"q": q + "zz"})
     assert r.status_code == 200
-    assert db.stats()["counts"]["movie"] == 11  # table still there
+    assert db.stats()["counts"]["movie"] == 15  # table still there
 
 
 def test_bad_type_and_sort_are_rejected(client):

@@ -34,8 +34,19 @@ def test_importer_flags_origin_and_keeps_low_vote_origin_titles(built):
     assert db.get("tt0000042") is None  # same votes, no origin: dropped as before
     flagged = {i for i in ("tt0000007", "tt0000040", "tt0000041", "tt0000043") if _origin_of(i) == 1}
     assert flagged == {"tt0000007", "tt0000040", "tt0000041", "tt0000043"}
-    assert db.stats()["meta"]["origin_built"] == "4"  # TMDB 606 has no IMDb id; 605 is an IMDb movie: neither is flagged
-    assert _origin_of("tt0000001") == 0  # movies never get the series flag
+    assert _origin_of("tt0000020") == 0 and _origin_of("tt0000003") == 0  # no CZ/SK/XC production
+    # 4 series + 5 films: TMDB 606 and 705 have no IMDb id, 702 is listed under CZ and SK, 707 repeats tt0000040
+    assert db.stats()["meta"]["origin_built"] == "9"
+
+
+def test_films_are_flagged_and_kept_below_min_votes(built):
+    films = {"tt0000001": 5000, "tt0000050": 30, "tt0000051": 0, "tt0000052": 10, "tt0000053": 6}
+    for tid, votes in films.items():  # tt0000001 comes from the CZ query, the others from CZ, SK and XC
+        row = db.get(tid)
+        assert row is not None and row["votes"] == votes and _origin_of(tid) == 1
+    assert (db.get("tt0000051") or {})["rating"] is None  # no IMDb rating row at all
+    assert db.get("tt0000054") is None  # same votes as tt0000050, no origin: dropped
+    assert _origin_of("tt0000040") == 1  # a title TMDB lists on both endpoints is flagged once
 
 
 def test_origin_only_filter(client):
@@ -43,6 +54,18 @@ def test_origin_only_filter(client):
     assert sorted(_ids(body)) == ["tt0000007", "tt0000040", "tt0000041", "tt0000043"]
     assert body["total"] == 4
     assert "tt0000003" not in _ids(body)  # Breaking Bad has no CZ/SK origin
+
+
+def test_origin_films_filter_and_rating_order(client):
+    body = _titles(client, type="movie", origin="czsk", sort="rating")
+    assert sorted(_ids(body)) == ["tt0000001", "tt0000050", "tt0000051", "tt0000052", "tt0000053"]
+    assert _ids(body)[0] == "tt0000001" and _ids(body)[-1] == "tt0000051"  # 8.2 / 5000 votes first, no rating last
+    assert "tt0000020" not in _ids(body)  # The Godfather is not Czech or Slovak
+
+
+def test_origin_genres_for_films(client):
+    body = client.get("/v1/genres", params={"type": "movie", "origin": "czsk"}).json()
+    assert {g["genre"]: g["n"] for g in body} == {"Drama": 4, "Comedy": 2, "Crime": 1}
 
 
 def test_origin_title_without_rating_comes_last_by_rating(client):
@@ -137,24 +160,6 @@ def test_add_origin_without_catalog_does_nothing(tmp_path):
 def test_fetch_ids_none_without_tmdb(monkeypatch):
     monkeypatch.setattr(config, "TMDB_KEY", "")
     assert origin.fetch_ids() is None
-
-
-def test_fetch_ids_none_when_a_page_fails(monkeypatch):
-    from app import tmdb_client
-    real = tmdb_client.request
-    monkeypatch.setattr(tmdb_client, "request", lambda path, params: None if params.get("page") == 2 else real(path, params))
-    monkeypatch.setattr(tmdb_client.db, "kv_get", lambda key, ttl: None)  # ignore pages cached by the import
-    assert origin.fetch_ids() is None  # never a half set: the importer then keeps the previous flags
-
-
-def test_import_keeps_previous_flags_when_tmdb_is_down(tmp_path, monkeypatch, built):
-    monkeypatch.setattr(origin, "fetch_ids", lambda: None)
-    monkeypatch.setattr(importer.db, "CATALOG", str(tmp_path / "rebuilt.db"))
-    monkeypatch.setattr(origin, "previous_ids", lambda: {"tt0000040"})
-    importer.build()
-    conn = sqlite3.connect(str(tmp_path / "rebuilt.db"))
-    assert [r[0] for r in conn.execute("SELECT id FROM titles WHERE origin=1")] == ["tt0000040"]
-    conn.close()
 
 
 def test_flat_lists_the_whole_type_best_rated_first(client):

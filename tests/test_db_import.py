@@ -11,8 +11,9 @@ def _row(title_id):
 
 def test_filter_keeps_popular_and_czech_named(built):
     # kept: tt1, tt5 (300 votes), tt2 (7 votes but a CZ name), tt3, tt7; dropped: tt4 adult, tt6 (50 votes, no CZ name),
-    # tt42 (series, 30 votes, no CZ/SK origin). Kept only for their CZ/SK origin: tt40, tt41 (30 votes), tt43 (no rating)
-    assert db.stats()["counts"] == {"movie": 11, "series": 5}
+    # tt42 (series, 30 votes, no CZ/SK origin). Kept only for their CZ/SK origin: tt40, tt41 (30 votes), tt43 (no rating) and the films tt50 (30 votes),
+    # tt51 (no rating), tt52 (10 votes), tt53 (6 votes); tt54 (30 votes, no origin) is dropped
+    assert db.stats()["counts"] == {"movie": 15, "series": 5}
     assert db.get("tt0000004") is None
     assert db.get("tt0000006") is None
 

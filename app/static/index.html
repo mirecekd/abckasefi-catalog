@@ -60,7 +60,7 @@
     <input id="q" type="search" placeholder="Hledat (bez diakritiky)" autocomplete="off">
     <select id="list"><option value="">Seznamy TMDB...</option></select>
     <select id="genre" title="Filtr podle žánru, výsledek je rovnou podle hodnocení"><option value="">Žánr...</option></select>
-    <label id="originBox" class="s" hidden><input type="checkbox" id="origin"> České a slovenské</label>
+    <label id="originBox" class="s"><input type="checkbox" id="origin"> České a slovenské</label>
     <select id="sort">
       <option value="name">Podle abecedy</option>
       <option value="popular">Nejvíc hlasů</option>
@@ -88,8 +88,6 @@ const LANGS = ["cs", "sk", "en"];
 const savedLang = (() => { try { return localStorage.getItem("abckasefi.lang"); } catch (e) { return null; } })();
 const st = { kind: "movie", letter: null, sort: "name", sortTouched: false, page: 1, mode: "letter", list: "", q: "",
   genre: "", origin: false, all: false, lang: LANGS.includes(savedLang) ? savedLang : "cs" };
-// shortcut: the CZ/SK origin flag exists for series only, add "movie" once the catalog flags films too
-const ORIGIN_KINDS = ["series"];
 const HIDDEN_GENRES = new Set(["Game-Show", "News", "Reality-TV", "Short", "Talk-Show"]);
 const GENRE_CS = { Action: "Akční", Adventure: "Dobrodružný", Animation: "Animovaný", Biography: "Životopisný", Comedy: "Komedie",
   Crime: "Krimi", Documentary: "Dokumentární", Drama: "Drama", Family: "Rodinný", Fantasy: "Fantasy", "Film-Noir": "Film-noir",
@@ -285,7 +283,7 @@ async function detail(id) {
 $("#kinds").onclick = async e => {
   const k = e.target.dataset.k; if (!k) return;
   st.kind = k; st.mode = "letter"; st.page = 1; st.letter = null; st.all = false; $("#q").value = ""; $("#list").value = "";
-  clearFilter(); enterView(); $("#originBox").hidden = !ORIGIN_KINDS.includes(k);
+  clearFilter(); enterView();
   document.querySelectorAll("#kinds button").forEach(b => b.classList.toggle("on", b.dataset.k === k));
   await loadLetters(); await lists(); await loadGenres(); show(true);
 };

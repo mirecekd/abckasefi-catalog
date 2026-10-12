@@ -42,6 +42,22 @@ def _discover_tv(params):
             "total_pages": len(ORIGIN_PAGES), "total_results": 6}
 
 
+# /discover/movie, one query per country: TMDB id -> pages. 702 sits under CZ and SK (the union must dedupe it).
+MOVIE_PAGES = {"CZ": {1: [701, 702], 2: [703]}, "SK": {1: [704, 702]}, "XC": {1: [705, 706, 707]},
+               "ZZ": {1: [798]}}  # test-only country: reports 501 pages, more than TMDB serves
+MOVIE_IMDB = {"701": "tt0000050", "702": "tt0000051", "703": "tt0000001", "704": "tt0000052", "705": None,
+              "706": "tt0000053", "707": "tt0000040"}  # 705: no IMDb id; 707: IMDb calls it a series
+
+
+def _discover_movie(params):
+    pages = MOVIE_PAGES.get(params.get("with_origin_country"))
+    if pages is None:
+        return None
+    total = 501 if params["with_origin_country"] == "ZZ" else len(pages)
+    return {"results": [{"id": i} for i in pages.get(int(params.get("page", 1)), [])],
+            "total_pages": total, "total_results": 7}
+
+
 def _tv(path):
     if path == "/tv/1396":
         return {"name": "Perníkový táta", "seasons": [
@@ -98,6 +114,8 @@ def _movie(path, params):
     if path.endswith("/external_ids") and path.startswith("/movie/") and path.split("/")[2].isdigit() \
             and CAPPED_BASE <= int(path.split("/")[2]) < CAPPED_BASE + 10000:
         return {"imdb_id": f"tt{int(path.split('/')[2]):07d}"}
+    if path.startswith("/movie/70") and path.endswith("/external_ids"):
+        return {"imdb_id": MOVIE_IMDB[path.split("/")[2]]}
     if path == "/movie/77/external_ids":
         return {"imdb_id": "tt0000001"}
     if path == "/movie/99/external_ids":
@@ -114,6 +132,8 @@ def fake_request(path, params):
         return {"movie_results": [], "tv_results": [{"id": 1396}]}
     if path == "/discover/tv":
         return _discover_tv(params)
+    if path == "/discover/movie":
+        return _discover_movie(params)
     if path.startswith("/find/"):
         return {"movie_results": [{"id": 77}] if path.endswith("tt0000001") else [], "tv_results": []}
     if path.startswith("/tv/"):
