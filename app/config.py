@@ -17,4 +17,5 @@ TMDB_LANG = os.environ.get("TMDB_LANGUAGE", "cs-CZ")
 API_TOKEN = os.environ.get("API_TOKEN", "").strip()  # empty = no auth (LAN only!)
 MIN_VOTES = _int("MIN_VOTES", 200)  # keep titles with at least this many IMDb votes
 LOCAL_MIN_VOTES = _int("LOCAL_MIN_VOTES", 5)  # ... or a CZ/SK title name and at least this many
+ORIGIN_MOVIE_MIN_VOTES = _int("ORIGIN_MOVIE_MIN_VOTES", 100)  # CZ/SK films only: IMDb votes needed for origin=1
 IMPORT_EVERY_HOURS = _int("IMPORT_EVERY_HOURS", 168)

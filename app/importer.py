@@ -157,7 +157,9 @@ def build(workdir=None):
             rating, nvotes = votes.get(tid, (None, 0))
             tn = names.get(tid, {})
             name, czsk = pick_name(tn, orig)
-            is_origin = tid in origin_ids  # films and series alike: the ids come from both TMDB endpoints
+            # films and series alike come from TMDB, but a film also needs the vote floor (series: any votes);
+            # one rule for fresh and previous ids. Below the floor a film is judged like any other title.
+            is_origin = tid in origin_ids and (kind == "series" or nvotes >= config.ORIGIN_MOVIE_MIN_VOTES)
             # keep popular titles, plus less-voted ones with a Czech/Slovak name or a CZ/SK origin
             if not is_origin and nvotes < config.MIN_VOTES and not (czsk and nvotes >= config.LOCAL_MIN_VOTES):
                 continue
@@ -174,6 +176,7 @@ def build(workdir=None):
         conn.execute("INSERT INTO meta VALUES('built', datetime('now'))")
         conn.execute("INSERT INTO meta VALUES('min_votes', ?)", (str(config.MIN_VOTES),))
         conn.execute("INSERT INTO meta VALUES('origin_built', ?)", (str(flagged),))  # present = origin is filled
+        conn.execute("INSERT INTO meta VALUES('origin_movie_min_votes', ?)", (str(config.ORIGIN_MOVIE_MIN_VOTES),))
         conn.commit()
     except sqlite3.Error:
         conn.close()

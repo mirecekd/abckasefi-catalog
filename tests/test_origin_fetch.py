@@ -23,7 +23,7 @@ def tmdb(monkeypatch):
 
 def test_fetch_ids_is_the_union_of_series_and_films(tmdb):
     assert origin.fetch_ids() == {"tt0000040", "tt0000041", "tt0000007", "tt0000043", "tt0000001",
-                                  "tt0000050", "tt0000051", "tt0000052", "tt0000053"}
+                                  "tt0000050", "tt0000051", "tt0000052", "tt0000053", "tt0000055", "tt0000056"}
 
 
 def test_fetch_ids_none_when_a_page_fails(tmdb):
@@ -65,8 +65,13 @@ def test_fetch_ids_none_above_the_500_page_cap(tmdb, monkeypatch):
 def test_import_keeps_previous_flags_when_external_ids_fail(tmdb, tmp_path, monkeypatch, built):
     tmdb.append(lambda path, params: path == "/movie/703/external_ids")
     monkeypatch.setattr(importer.db, "CATALOG", str(tmp_path / "rebuilt.db"))
-    monkeypatch.setattr(origin, "previous_ids", lambda: {"tt0000050"})
+    monkeypatch.setattr(origin, "previous_ids", lambda: {"tt0000050", "tt0000052", "tt0000055", "tt0000041"})
     importer.build()
     conn = sqlite3.connect(str(tmp_path / "rebuilt.db"))
-    assert [r[0] for r in conn.execute("SELECT id FROM titles WHERE origin=1")] == ["tt0000050"]
+    # the fallback ids get the same film floor: tt55 (100 votes) and the series tt41 (30 votes) keep the flag,
+    # tt50 (30 votes, no CZ/SK name) leaves the catalog, tt52 (10 votes, SK name) stays as an ordinary film
+    assert sorted(r[0] for r in conn.execute("SELECT id FROM titles WHERE origin=1")) == ["tt0000041", "tt0000055"]
+    assert conn.execute("SELECT origin FROM titles WHERE id='tt0000052'").fetchone() == (0,)
+    assert conn.execute("SELECT 1 FROM titles WHERE id='tt0000050'").fetchone() is None
+    assert conn.execute("SELECT v FROM meta WHERE k='origin_built'").fetchone() == ("2",)
     conn.close()

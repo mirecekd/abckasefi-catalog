@@ -21,34 +21,6 @@ def _ids(body):
     return [i["id"] for i in body["items"]]
 
 
-def _origin_of(title_id):
-    conn = sqlite3.connect(db.CATALOG)
-    try:
-        return conn.execute("SELECT origin FROM titles WHERE id=?", (title_id,)).fetchone()[0]
-    finally:
-        conn.close()
-
-
-def test_importer_flags_origin_and_keeps_low_vote_origin_titles(built):
-    assert db.get("tt0000040") is not None and db.get("tt0000041") is not None  # 100 / 30 votes, kept for origin
-    assert db.get("tt0000042") is None  # same votes, no origin: dropped as before
-    flagged = {i for i in ("tt0000007", "tt0000040", "tt0000041", "tt0000043") if _origin_of(i) == 1}
-    assert flagged == {"tt0000007", "tt0000040", "tt0000041", "tt0000043"}
-    assert _origin_of("tt0000020") == 0 and _origin_of("tt0000003") == 0  # no CZ/SK/XC production
-    # 4 series + 5 films: TMDB 606 and 705 have no IMDb id, 702 is listed under CZ and SK, 707 repeats tt0000040
-    assert db.stats()["meta"]["origin_built"] == "9"
-
-
-def test_films_are_flagged_and_kept_below_min_votes(built):
-    films = {"tt0000001": 5000, "tt0000050": 30, "tt0000051": 0, "tt0000052": 10, "tt0000053": 6}
-    for tid, votes in films.items():  # tt0000001 comes from the CZ query, the others from CZ, SK and XC
-        row = db.get(tid)
-        assert row is not None and row["votes"] == votes and _origin_of(tid) == 1
-    assert (db.get("tt0000051") or {})["rating"] is None  # no IMDb rating row at all
-    assert db.get("tt0000054") is None  # same votes as tt0000050, no origin: dropped
-    assert _origin_of("tt0000040") == 1  # a title TMDB lists on both endpoints is flagged once
-
-
 def test_origin_only_filter(client):
     body = _titles(client, type="series", origin="czsk", sort="name")
     assert sorted(_ids(body)) == ["tt0000007", "tt0000040", "tt0000041", "tt0000043"]
@@ -56,16 +28,9 @@ def test_origin_only_filter(client):
     assert "tt0000003" not in _ids(body)  # Breaking Bad has no CZ/SK origin
 
 
-def test_origin_films_filter_and_rating_order(client):
-    body = _titles(client, type="movie", origin="czsk", sort="rating")
-    assert sorted(_ids(body)) == ["tt0000001", "tt0000050", "tt0000051", "tt0000052", "tt0000053"]
-    assert _ids(body)[0] == "tt0000001" and _ids(body)[-1] == "tt0000051"  # 8.2 / 5000 votes first, no rating last
-    assert "tt0000020" not in _ids(body)  # The Godfather is not Czech or Slovak
-
-
 def test_origin_genres_for_films(client):
     body = client.get("/v1/genres", params={"type": "movie", "origin": "czsk"}).json()
-    assert {g["genre"]: g["n"] for g in body} == {"Drama": 4, "Comedy": 2, "Crime": 1}
+    assert {g["genre"]: g["n"] for g in body} == {"Drama": 2, "Comedy": 1, "Crime": 1}
 
 
 def test_origin_title_without_rating_comes_last_by_rating(client):

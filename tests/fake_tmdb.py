@@ -43,10 +43,11 @@ def _discover_tv(params):
 
 
 # /discover/movie, one query per country: TMDB id -> pages. 702 sits under CZ and SK (the union must dedupe it).
-MOVIE_PAGES = {"CZ": {1: [701, 702], 2: [703]}, "SK": {1: [704, 702]}, "XC": {1: [705, 706, 707]},
+MOVIE_PAGES = {"CZ": {1: [701, 702], 2: [703, 708, 709]}, "SK": {1: [704, 702]}, "XC": {1: [705, 706, 707]},
                "ZZ": {1: [798]}}  # test-only country: reports 501 pages, more than TMDB serves
 MOVIE_IMDB = {"701": "tt0000050", "702": "tt0000051", "703": "tt0000001", "704": "tt0000052", "705": None,
-              "706": "tt0000053", "707": "tt0000040"}  # 705: no IMDb id; 707: IMDb calls it a series
+              "706": "tt0000053", "707": "tt0000040",
+              "708": "tt0000055", "709": "tt0000056"}  # 705: no IMDb id; 707: IMDb calls it a series
 
 
 def _discover_movie(params):
