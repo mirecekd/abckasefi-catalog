@@ -66,6 +66,7 @@
       <option value="popular">Nejvíc hlasů</option>
       <option value="rating">Podle hodnocení</option>
       <option value="year">Podle roku</option>
+      <option value="tmdb" hidden disabled>Pořadí TMDB</option>
     </select>
     <select id="lang" title="Jazyk názvů a popisků">
       <option value="cs">Názvy: CZ</option>
@@ -210,11 +211,12 @@ const lazyPoster = new IntersectionObserver(es => es.forEach(e => {
 let showSeq = 0;  // a slow answer to an older request must not land in a newer list (fast filter changes)
 async function show(reset) {
   const seq = ++showSeq;
+  if (st.mode !== "list" && st.sort === "tmdb") enterView();  // "TMDB order" exists only inside a TMDB list
   if (reset) clear($("#grid"));
   document.querySelectorAll("#letters button").forEach(b => b.classList.toggle("on", st.mode === "letter" && !narrowed() && (st.all ? b.dataset.l === "*" : b.dataset.l === st.letter)));
   let url;
   if (st.mode === "search") url = "/v1/search?q=" + encodeURIComponent(st.q) + "&type=" + st.kind + "&sort=" + (st.sortTouched ? st.sort : "popular");
-  else if (st.mode === "list") url = `/v1/list/${st.kind}/${st.list}?page=${st.page}&sort=${st.sortTouched ? (st.sort === "popular" ? "votes" : st.sort) : "tmdb"}`;
+  else if (st.mode === "list") url = `/v1/list/${st.kind}/${st.list}?page=${st.page}&sort=${st.sort === "popular" ? "votes" : st.sort}`;
   else if (filtered()) url = `/v1/titles?type=${st.kind}` + (st.genre ? "&genre=" + encodeURIComponent(st.genre) : "") + (st.origin ? "&origin=czsk" : "")
     + (st.all && !narrowed() ? "&flat=1" : "") + `&sort=${st.sort === "popular" ? "votes" : st.sort}&page=${st.page}`;
   else if (st.letter) url = `/v1/titles?type=${st.kind}&letter=${encodeURIComponent(st.letter)}&sort=${st.sort === "popular" ? "rating" : st.sort}&page=${st.page}`;
@@ -313,12 +315,16 @@ $("#sort").onchange = e => {
 };
 $("#list").onchange = e => {
   const key = e.target.value;
-  if (narrowed() && key in LIST_AS_SORT) {  // keep the genre / CZ-SK filter, just change its order
-    st.sort = LIST_AS_SORT[key]; st.sortTouched = true; st.page = 1; st.mode = "letter";
+  if (key in LIST_AS_SORT) {  // the catalog's own best rated / most voted: over the whole type (or inside the filter), not one TMDB page
+    st.sort = LIST_AS_SORT[key]; st.sortTouched = true; st.page = 1; st.mode = "letter"; st.list = "";
+    if (!narrowed()) st.all = true;
     $("#sort").value = st.sort; e.target.value = ""; show(true);
     return;
   }
-  st.list = key; st.mode = st.list ? "list" : "letter"; st.page = 1; show(true);
+  st.list = key; st.page = 1;
+  if (key) { st.mode = "list"; st.sort = "tmdb"; st.sortTouched = false; $("#sort").value = "tmdb"; }  // TMDB's own order, said so
+  else { st.mode = "letter"; enterView(); }
+  show(true);
 };
 $("#genre").onchange = e => { st.genre = e.target.value; applyFilter(); };
 $("#origin").onchange = async e => { st.origin = e.target.checked; await loadGenres(); applyFilter(); };
