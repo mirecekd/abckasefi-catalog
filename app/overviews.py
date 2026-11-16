@@ -32,30 +32,46 @@ def _code(lang):
     return lang or config.TMDB_LANG[:2]
 
 
+def _entry(conn, key):
+    """Fresh cache value of `key` on an open cache connection, else None."""
+    row = conn.execute("SELECT val, ts FROM kv WHERE key=?", (key,)).fetchone()
+    if not row or time.time() - row["ts"] >= tmdb_detail.DETAIL_TTL:
+        return None
+    try:
+        return json.loads(row["val"])
+    except ValueError:
+        log.warning("corrupt cache entry %s ignored", key)
+        return None
+
+
 def _cached(ids, code):
-    """imdb id -> cached {'overview', 'overview_lang', ...} for the ids that have a fresh cache entry."""
-    out = {}
+    """(overviews, posters): imdb id -> cached {'overview', 'overview_lang', ...} for the ids that have a fresh
+    overview entry, and imdb id -> direct w342 poster URL for the ids whose cached detail names a poster."""
+    out, posters = {}, {}
+    version = tmdb_detail.DETAIL_VERSION
     conn = db.connect(db.CACHE)
     try:
         for imdb in ids:
-            row = conn.execute("SELECT val, ts FROM kv WHERE key=?",
-                               (f"overview{tmdb_detail.DETAIL_VERSION}:{code}:{imdb}",)).fetchone()
-            if row and time.time() - row["ts"] < tmdb_detail.DETAIL_TTL:
-                try:
-                    out[imdb] = json.loads(row["val"])
-                except ValueError:
-                    log.warning("corrupt overview cache entry for %s ignored", imdb)
+            entry = _entry(conn, f"overview{version}:{code}:{imdb}")
+            if entry is not None:
+                out[imdb] = entry
+            base = _entry(conn, f"detail{version}:{imdb}")
+            url = client.image_url(base.get("poster")) if isinstance(base, dict) else None
+            if url:
+                posters[imdb] = url
     finally:
         conn.close()
-    return out
+    return out, posters
 
 
 def annotate(items, lang="", fallback=None):
     """Set item['overview'] / item['overview_lang'] from the cache, else from `fallback` (imdb id -> text from the
-    TMDB list result), else "". Returns [(imdb id, type)] of items whose plot is unknown and not cached at all."""
-    cached = _cached([i["id"] for i in items], _code(lang))
+    TMDB list result), else "". Also fills item['poster_url'] from the cached detail unless the item already has
+    one (a TMDB list result). Returns [(imdb id, type)] of items whose plot is unknown and not cached at all."""
+    cached, posters = _cached([i["id"] for i in items], _code(lang))
     missing = []
     for item in items:
+        item["poster_url"] = item.get("poster_url") or posters.get(item["id"], "")
         entry = cached.get(item["id"])
         text = (entry or {}).get("overview") or ""
         used = (entry or {}).get("overview_lang") or ""

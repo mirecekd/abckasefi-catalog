@@ -3,6 +3,7 @@
 import gzip
 import os
 import tempfile
+import threading
 import time
 
 import pytest
@@ -99,3 +100,19 @@ def client(monkeypatch):
     deadline = time.time() + 10  # background overview fetches must finish while the fake TMDB is still patched in
     while overviews.PENDING and time.time() < deadline:
         time.sleep(0.01)
+
+
+@pytest.fixture()
+def tmdb_calls(monkeypatch, client):
+    """Record every TMDB request with the name of the thread that made it (fake answers, no network)."""
+    from app import overviews, tmdb_client
+    calls = []
+
+    def recording(path, params):
+        calls.append((path, threading.current_thread().name))
+        return fake_request(path, params)
+
+    monkeypatch.setattr(tmdb_client, "request", recording)
+    overviews.PENDING.clear()
+    overviews._FAILED.clear()
+    return calls

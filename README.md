@@ -91,6 +91,7 @@ Public routes (no token): `GET /health`, the web UI at `GET /`, `/static/...`, a
 Notes:
 
 - `type` in `/v1/list/{type}/{name}` is `movie` or `series`. Movie lists: `top_rated`, `popular`, `now_playing`, `upcoming`, `trending_day`, `trending_week`. Series lists: `top_rated`, `popular`, `airing_today`, `on_the_air`, `trending_day`, `trending_week`. `GET /v1/lists` returns the same names.
+- Every list item (`/v1/titles`, `/v1/search`, `/v1/list/...`) has `poster` (a `/v1/poster/{id}` path) and `poster_url`: the direct TMDB image URL at `w342` (e.g. `https://image.tmdb.org/t/p/w342/abc.jpg`), or an empty string when unknown. `poster_url` is filled from caches only (never a TMDB call in the request path), so it can be empty on the first view of a title.
 - Paging: `per_page` sets the page size and `has_more` tells whether a later page exists, so clients can page until it is `false`.
 - TMDB serves lists in pages of 20 and refuses pages above 500, so a list is capped at 500 x 20 = 10000 items. A page past the end returns an empty `items` list instead of an error.
 - List `sort` orders the items of the requested page only (`sorted_within_page` says so). Ratings based on very few votes are flagged with `rating_reliable: false` and ranked below better-supported ones.

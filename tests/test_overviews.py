@@ -3,25 +3,8 @@
 import threading
 import time
 
-import pytest
-
 from app import config, db, overviews, tmdb_client
 from tests.fake_tmdb import fake_request
-
-
-@pytest.fixture()
-def tmdb_calls(monkeypatch, client):
-    """Record every TMDB request with the name of the thread that made it (fake answers, no network)."""
-    calls = []
-
-    def recording(path, params):
-        calls.append((path, threading.current_thread().name))
-        return fake_request(path, params)
-
-    monkeypatch.setattr(tmdb_client, "request", recording)
-    overviews.PENDING.clear()
-    overviews._FAILED.clear()
-    return calls
 
 
 def _wait_idle():

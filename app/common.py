@@ -87,5 +87,5 @@ def item_of(row, lang=""):
         "rating": row["rating"], "votes": row["votes"], "genres": (row["genres"] or "").split(",") if row["genres"] else [],
         "czsk": bool(row["local"]), "poster": f"/v1/poster/{row['id']}",
         "rating_reliable": (row["votes"] or 0) >= MIN_RATED,
-        "overview": "", "overview_lang": "",  # filled by overviews.annotate from caches only
+        "overview": "", "overview_lang": "", "poster_url": "",  # filled by overviews.annotate from caches only
     }

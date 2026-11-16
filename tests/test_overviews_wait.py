@@ -6,7 +6,7 @@ import time
 import pytest
 
 from app import config, overviews, tmdb_client
-from tests.test_overviews import _clear_cache, _overviews, _wait_idle, tmdb_calls  # noqa: F401 - tmdb_calls is a fixture
+from tests.test_overviews import _clear_cache, _overviews, _wait_idle
 
 Q_IDS = ("tt0000030", "tt0000031", "tt0000032")  # the three films of /v1/titles?type=movie&letter=Q
 Q_URL = "/v1/titles?type=movie&letter=Q"

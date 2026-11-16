@@ -38,7 +38,8 @@ def _tmdb_item(result, imdb, kind):
         "titles": {}, "original": None,
         "year": int((result.get("release_date") or result.get("first_air_date") or "0")[:4] or 0) or None,
         "rating": result.get("vote_average"), "votes": result.get("vote_count"), "genres": [], "czsk": False,
-        "poster": f"/v1/poster/{imdb}", "overview": "", "overview_lang": ""}
+        "poster": f"/v1/poster/{imdb}", "overview": "", "overview_lang": "",
+        "poster_url": ""}
 
 
 def _window(kind, name, page, per_page):
@@ -95,7 +96,9 @@ def tmdb_list(background: BackgroundTasks, kind: str, name: str, page: int = Que
             continue
         from_tmdb[imdb] = r.get("overview") or ""
         row = db.get(imdb)
-        out.append(item_of(row, lang) if row else _tmdb_item(r, imdb, kind))
+        item = item_of(row, lang) if row else _tmdb_item(r, imdb, kind)
+        item["poster_url"] = client.image_url(r.get("poster_path")) or ""
+        out.append(item)
     overviews.attach(out, background, lang, from_tmdb)
     if sort != "tmdb":
         out.sort(key=_list_key(sort))
