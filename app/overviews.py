@@ -2,25 +2,28 @@
 """Plot summaries ("overview") for list items without any network call in the request path.
 
 annotate() fills each item from the TMDB detail cache in cache.db (the `overview{DETAIL_VERSION}:{lang}:{imdb}` entries
-written by tmdb_detail.detail) and, for TMDB lists, from the list result itself. schedule() then runs after the
-response was sent and fetches the details of items that have no cache entry yet, so the next view shows the plot.
-One process-wide pool of 3 workers serves all requests; an id is never queued twice at the same time.
+written by tmdb_detail.detail) and, for TMDB lists, from the list result itself. schedule() queues the detail fetch
+of items that have no cache entry yet; attach() waits for those fetches at most OVERVIEW_WAIT_S seconds and then
+annotates again, so the first view already has most plots. The routes are sync `def`, so the wait occupies a
+threadpool thread, never the event loop. Fetches that miss the budget keep running and show up on the next view.
+OVERVIEW_WAIT_S=0 is the old behaviour: schedule() runs after the response was sent.
+One process-wide pool serves all requests; an id is never queued twice at the same time.
 """
 import json
 import logging
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 
 from . import config, db, tmdb_detail
 from . import tmdb_client as client
 
 log = logging.getLogger("catalog.overviews")
-MAX_PER_REQUEST = 40
-WORKERS = 3
+MAX_PER_REQUEST = 60
+WORKERS = config.OVERVIEW_WORKERS
 RETRY_AFTER_S = 3600  # a title TMDB could not resolve is not asked for again sooner than this
 POOL = ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="overview")
-PENDING = set()  # (imdb id, language code) being fetched or waiting in the pool
+PENDING = {}  # (imdb id, language code) -> Future of the fetch being run or waiting in the pool
 _FAILED = {}  # (imdb id, language code) -> time of the failed attempt
 _LOCK = threading.Lock()
 
@@ -75,32 +78,46 @@ def _fetch(imdb, kind, lang, key):
             _FAILED[key] = time.time()
     finally:
         with _LOCK:
-            PENDING.discard(key)
+            PENDING.pop(key, None)
 
 
 def schedule(missing, lang=""):
-    """Queue the detail fetch of up to MAX_PER_REQUEST ids from annotate(); no TMDB key = nothing happens."""
+    """Queue, in list order, the detail fetch of up to MAX_PER_REQUEST ids from annotate(); no TMDB key = nothing
+    happens. Returns the futures of those fetches, including fetches another request already started."""
+    futures = []
     if not missing or not client.enabled():
-        return
+        return futures
     code, now = _code(lang), time.time()
     for imdb, kind in missing[:MAX_PER_REQUEST]:
         key = (imdb, code)
-        with _LOCK:
-            if key in PENDING or now - _FAILED.get(key, 0) < RETRY_AFTER_S:
+        with _LOCK:  # held across submit: _fetch removes its key under this lock, so it cannot run ahead of the insert
+            if key in PENDING:
+                futures.append(PENDING[key])
+                continue
+            if now - _FAILED.get(key, 0) < RETRY_AFTER_S:
                 continue
             if len(_FAILED) > 5000:
                 _FAILED.clear()
-            PENDING.add(key)
-        try:
-            POOL.submit(_fetch, imdb, kind, lang, key)
-        except RuntimeError:  # pool already shut down (process exit)
-            with _LOCK:
-                PENDING.discard(key)
-            return
+            try:
+                PENDING[key] = POOL.submit(_fetch, imdb, kind, lang, key)
+            except RuntimeError:  # pool already shut down (process exit)
+                return futures
+            futures.append(PENDING[key])
+    return futures
 
 
 def attach(items, background, lang="", fallback=None):
-    """annotate() now, schedule() once the response has been sent. `background` is FastAPI's BackgroundTasks."""
+    """annotate() from the cache, then wait up to OVERVIEW_WAIT_S for the missing plots and annotate again.
+    With a zero budget schedule() runs after the response instead. `background` is FastAPI's BackgroundTasks."""
     missing = annotate(items, lang, fallback)
-    if missing:
+    if not missing or not client.enabled():
+        return
+    if config.OVERVIEW_WAIT_S <= 0:
         background.add_task(schedule, missing, lang)
+        return
+    try:
+        futures = schedule(missing, lang)
+        if futures and wait(futures, timeout=config.OVERVIEW_WAIT_S).done:
+            annotate(items, lang, fallback)
+    except Exception:  # noqa: BLE001 - the plots are optional, the response must still go out
+        log.exception("waiting for overviews failed")

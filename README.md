@@ -59,10 +59,12 @@ Settings are environment variables, read from `.env` by docker compose.
 | `LOCAL_MIN_VOTES` | `5` | Also keep titles with a Czech or Slovak name and at least this many votes. |
 | `ORIGIN_MOVIE_MIN_VOTES` | `100` | Films need this many IMDb votes to count as Czech/Slovak origin (`origin=czsk`). Series are not affected; films below it are treated like any other title. |
 | `IMPORT_EVERY_HOURS` | `168` | Rebuild the catalog from IMDb when it is at least this old (checked hourly). |
+| `OVERVIEW_WAIT_S` | `2.5` | Seconds a list request (titles, search, TMDB lists) waits for missing plots from TMDB before answering (0-8, decimals allowed). `0` = never wait: plots are fetched after the response and show up on the next view. Unfinished fetches keep running either way. |
+| `OVERVIEW_WORKERS` | `8` | Threads fetching plots from TMDB (1-16). Up to 60 titles per request are fetched, in list order. |
 | `DATA_DIR` | `/data` | Directory inside the container for `catalog.db`, `cache.db` and the downloaded IMDb datasets. Set in the Dockerfile; you normally do not change it. |
 | `DATA_PATH` | `/opt/abckasefi-catalog/data` | Used by `docker-compose.yml` only: the host directory mounted at `/data`. Must be owned by uid 10001. |
 
-A non-numeric value for `MIN_VOTES`, `LOCAL_MIN_VOTES`, `ORIGIN_MOVIE_MIN_VOTES` or `IMPORT_EVERY_HOURS` falls back to its default.
+A non-numeric value for `MIN_VOTES`, `LOCAL_MIN_VOTES`, `ORIGIN_MOVIE_MIN_VOTES`, `IMPORT_EVERY_HOURS`, `OVERVIEW_WAIT_S` or `OVERVIEW_WORKERS` falls back to its default.
 
 ## HTTP API
 

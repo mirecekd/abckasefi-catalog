@@ -63,7 +63,8 @@ def test_overview_from_cache_without_tmdb_call_in_request_path(client, tmdb_call
     assert all(thread != request_thread for _, thread in tmdb_calls)
 
 
-def test_background_fill_in_makes_the_plot_visible_on_the_next_view(client, tmdb_calls):
+def test_background_fill_in_makes_the_plot_visible_on_the_next_view(client, tmdb_calls, monkeypatch):
+    monkeypatch.setattr(config, "OVERVIEW_WAIT_S", 0.0)  # the old, fully background behaviour
     _clear_cache("tt0000001")
     first = client.get("/v1/search?q=pelisk").json()
     assert _overviews(first)["tt0000001"] == ("", "")  # nothing cached yet, nothing fetched in the request
@@ -108,14 +109,14 @@ def test_schedule_skips_ids_already_pending(client, tmdb_calls):
         overviews.PENDING.clear()
 
 
-def test_at_most_forty_titles_per_request_and_three_workers(client, tmdb_calls, monkeypatch):
+def test_at_most_sixty_titles_per_request_and_configured_workers(client, tmdb_calls, monkeypatch):
     queued = []
     monkeypatch.setattr(overviews.POOL, "submit", lambda fn, *a: queued.append(a))
     overviews.PENDING.clear()
     overviews.schedule([(f"tt{n:07d}", "movie") for n in range(100)])
-    assert len(queued) == overviews.MAX_PER_REQUEST == 40
+    assert len(queued) == overviews.MAX_PER_REQUEST == 60
     overviews.PENDING.clear()
-    assert overviews.WORKERS == 3 and overviews.POOL._max_workers == 3
+    assert overviews.WORKERS == config.OVERVIEW_WORKERS == 8 and overviews.POOL._max_workers == 8
 
 
 def test_no_tmdb_key_means_no_background_work(client, tmdb_calls, monkeypatch):
